@@ -1,6 +1,6 @@
-# Quehaceres — contexto para Claude Code
+# Slices — contexto para Claude Code
 
-PWA familiar para repartir quehaceres. Costo cero. Usuarios: Santiago, Isis, Victoria, Aries
+Slices es la PWA de la familia Limón para repartir los quehaceres (un limón entero que se reparte en gajos). Costo cero. Usuarios: Santiago, Isis, Victoria, Aries
 (+ una persona de fin de semana que puede no usar la app). Idioma de la UI: español.
 Preferencia del dueño: soluciones directas, sin sobre-ingeniería.
 
@@ -19,7 +19,17 @@ Preferencia del dueño: soluciones directas, sin sobre-ingeniería.
 - `tests/schedule.test.js`: 18 tests con vitest, todos pasan. Correr `npm test` después de cualquier cambio a schedule.js.
 - `supabase/migrations/…_init.sql`: tablas, RLS, triggers (solo un admin cambia rol/cuenta/estado; siempre queda ≥1 admin; auditoría de chores), RPCs (`bootstrap_house`, `create_invite`, `claim_invite`, `request_cover`, `cancel_cover_request`, `cover_task`, `push_ack`, `device_health`, `ping`), publicación realtime y bucket `avatars`.
 - `supabase/migrations/…_cron.sql`: cron por minuto con secretos en Vault (`project_url`, `cron_secret`) y limpieza semanal.
-- Mockup de las 8 pantallas: canvas de Claude Design "App de Quehaceres" (pídele a Aries el link). Es la referencia visual: verde `#0E7C66`, fondo `#F3F5F7`, Plus Jakarta Sans, tarjetas blancas con radio 16, targets ≥44px, barra inferior Hoy / Admin / Perfil.
+- Mockup de las 8 pantallas: canvas de Claude Design "App de Quehaceres" (https://claude.ai/artifact/YDEQXgSx7KmND4q4nWAn9N). Úsalo para **estructura y flujo** (qué hay en cada pantalla, barra inferior Hoy / Admin / Perfil, targets ≥44px). Sus colores son los viejos: **no** los copies.
+- Identidad visual: `design/tokens.json` y `design/README.md` (copia del Design System "Slices", https://claude.ai/artifact/QbyjrEMDHqUyJzNgdeBm8Y). Es la fuente de verdad de colores, tipografía, radios, espacios y sombras. Marca: https://claude.ai/artifact/NZtV1uTAu84ZU2GW5guHvu (ícono: variante 2 "Medio limón" de la fusión C+D).
+
+## Identidad (decidida)
+- Limón criollo: cáscara verde, pulpa verde clara, fondo verde bosque. Nunca limón amarillo.
+- **Ícono:** media rodaja con el gajo central separado hacia arriba, sobre `icono-fondo`. Igual en claro y oscuro.
+- **Medidor de la pantalla Hoy:** la media rodaja; cada tarea del día es un gajo (`pulpa` = hecha, `pendiente` = por hacer). Tu gajo pendiente sale en oscuro y un poco separado. Reemplaza la barra de progreso del mockup.
+- **Tipografía:** Fraunces (logotipo "Slices", saludo y títulos de pantalla/hoja) y Plus Jakarta Sans para todo lo demás. Ambas de Google Fonts.
+- **Tema:** cada persona elige en Perfil *Sistema* (por defecto), *Claro* u *Oscuro*; se guarda en `member_prefs.theme` (`system|light|dark`) y también en localStorage para pintar antes de cargar datos. La app pone `data-theme="light|dark"` en `<html>` solo si la persona eligió uno; con *Sistema* manda `prefers-color-scheme`. Genera variables CSS desde `design/tokens.json` (un `:root` con el tema claro, `[data-theme=dark]` y `@media (prefers-color-scheme: dark) :root:not([data-theme=light])` con el oscuro).
+- **Color de persona:** `members.color` es un índice 1–5 que apunta a `persona-1…5`.
+- **Voz:** de tú, corta, sin regaños ("Hoy te toca", "Isis te cubrió"). Ver `design/README.md`.
 
 ## Lo que FALTA (en este orden)
 
@@ -66,6 +76,7 @@ Pantallas (ver mockup):
   - Mis dispositivos con estado (último acuse) y botones *Probar aviso* y Guía.
   - Recordatorios por tarea (solo las tareas en las que participo): on, hora, *Insistir 20:00*.
   - 4 interruptores de cobertura.
+  - Tema: Sistema / Claro / Oscuro.
 - **Guía de avisos:** checklist para iPhone y Android. Lo detectable (standalone, `Notification.permission`) se marca solo y el resto lo marca el usuario a mano.
 - **Admin · tareas:** lista con mini semana L–D e interruptor de activa. El editor tiene nombre, descripción, chips de participantes (con orden subir/bajar), modo, cuadrícula por día (Nadie / Rotativo / persona, solo entre participantes), N, días, fecha de inicio, hora sugerida y "Aplica desde".
 - **Admin · miembros:**
@@ -77,7 +88,7 @@ Pantallas (ver mockup):
 ### 3. CI y docs
 - `.github/workflows/deploy.yml`: build y deploy a Pages. Las variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` y `VITE_VAPID_PUBLIC_KEY` salen de repo variables.
 - `.github/workflows/keepalive.yml`: cron semanal que hace `POST {SUPABASE_URL}/rest/v1/rpc/ping` con la anon key.
-- Íconos PNG 192/512 y `apple-touch-icon` 180 (iOS no usa SVG para la pantalla de inicio).
+- Íconos PNG 192/512 (`any`), 512 maskable (rodaja dentro del 80 % central) y `apple-touch-icon` 180 (iOS no usa SVG para la pantalla de inicio). Se generan desde el SVG del ícono (variante 2).
 - README de setup:
   1. Crear el proyecto Supabase y activar el provider Google (OAuth client en Google Cloud con redirect `https://<ref>.supabase.co/auth/v1/callback`). Agregar la URL de Pages a Redirect URLs.
   2. `supabase link` y `supabase db push`.
