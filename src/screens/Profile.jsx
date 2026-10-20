@@ -18,9 +18,9 @@ const ago = (ts) => {
 
 const COVER_PREFS = [
   ['meCubren', 'Cuando alguien cubre una tarea mía', 'Quién la hizo y qué turno te toca devolver'],
-  ['mePiden', 'Cuando me piden cubrir a mí', 'Un pedido directo para ti'],
+  ['mePiden', 'Cuando me piden cubrir a mí', 'Pedidos para ti o de tareas en las que participas'],
   ['devolver', 'El día que me toca devolver', 'Se suma al recordatorio de esa tarea'],
-  ['general', 'Cualquier pedido abierto en la casa', 'Cuando alguien pide ayuda a todos'],
+  ['general', 'Cualquier pedido abierto en la casa', 'También de tareas en las que no participas'],
   ['actualizaciones', 'Nuevas versiones de Slices', 'Un aviso cuando la app se actualiza']
 ];
 
