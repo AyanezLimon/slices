@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { todayView, ruleMeta, participantsOf, returnFor, actions, ckey } from '../lib/house.js';
 import { relDate, longDate } from '../../supabase/functions/_shared/format.js';
-import { Avatar, Icon, Sheet, Gauge, attempt } from '../components/ui.jsx';
+import { Avatar, Icon, Sheet, Gauge, InstallCard, attempt } from '../components/ui.jsx';
 
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit' });
 
@@ -44,6 +44,7 @@ export function Today({ h }) {
             {v.mine.length > 0 && <span class="meta">{mineDone} de {v.mine.length} tuyas hechas</span>}
           </div>
         </div>
+        <InstallCard />
       </header>
 
       {v.forMe.length > 0 && (

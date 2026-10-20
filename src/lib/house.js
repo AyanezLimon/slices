@@ -71,7 +71,10 @@ export function useHouse(session) {
     return () => { supabase.removeChannel(ch); document.removeEventListener('visibilitychange', onVisible); };
   }, [session, load]);
 
-  return { ...state, reload: load };
+  // Refleja al instante un cambio de preferencias (no llega por Realtime).
+  const patchPrefs = useCallback((patch) => setState((s) => ({ ...s, prefs: { ...s.prefs, ...patch } })), []);
+
+  return { ...state, reload: load, patchPrefs };
 }
 
 // ───────────── Derivados ─────────────
@@ -130,8 +133,16 @@ export const actions = {
       p_chore: choreId, p_date: date, p_covered: covered, p_return_date: returnDate || null,
       p_request: requestId || null, p_mark_done: Boolean(markDone)
     })),
-  savePrefs: async (h, patch) =>
-    must(await supabase.from('member_prefs').update({ ...patch, updated_at: new Date().toISOString() }).eq('member_id', h.me.id)),
+  savePrefs: async (h, patch) => {
+    const before = h.prefs;
+    h.patchPrefs(patch);
+    try {
+      must(await supabase.from('member_prefs').update({ ...patch, updated_at: new Date().toISOString() }).eq('member_id', h.me.id));
+    } catch (e) {
+      h.patchPrefs(before);
+      throw e;
+    }
+  },
   updateMember: async (id, patch) => must(await supabase.from('members').update(patch).eq('id', id)),
   addMember: async (name, colorIndex) => must(await supabase.from('members').insert({ name, color_index: colorIndex }).select().single()),
   createInvite: async (memberId) => must(await supabase.rpc('create_invite', { p_member: memberId })),

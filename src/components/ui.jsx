@@ -1,3 +1,4 @@
+import { useInstall } from '../lib/install.js';
 import { useEffect, useState } from 'preact/hooks';
 
 // ───────────── Íconos de trazo (24px, stroke 2) ─────────────
@@ -158,5 +159,26 @@ export function AppMark({ size = 72 }) {
       <path fill="#CFE88A" stroke="#F3F8E3" stroke-width="12" stroke-linejoin="round" d="M240.0 350.0 L86.0 350.0 A170 170 0 0 1 118.5 250.1 L243.1 340.6 Z M243.1 340.6 L118.5 250.1 A170 170 0 0 1 203.5 188.3 L251.1 334.8 Z M260.9 334.8 L308.5 188.3 A170 170 0 0 1 393.5 250.1 L268.9 340.6 Z M268.9 340.6 L393.5 250.1 A170 170 0 0 1 426.0 350.0 L272.0 350.0 Z" />
       <path fill="#CFE88A" stroke="#F3F8E3" stroke-width="12" stroke-linejoin="round" d="M251.1 290.8 L203.5 144.3 A170 170 0 0 1 308.5 144.3 L260.9 290.8 Z" />
     </svg>
+  );
+}
+
+export function InstallCard() {
+  const { kind, install, dismiss } = useInstall();
+  if (!kind) return null;
+  return (
+    <div class="card" role="note">
+      <div class="stack-sm">
+        <span class="tarea" style="font-size:15px">Instala Slices en tu pantalla de inicio</span>
+        <span class="meta">
+          {kind === 'ios'
+            ? 'Toca Compartir (el cuadro con la flecha hacia arriba) y luego "Agregar a inicio". Ábrela siempre desde ese ícono para recibir avisos.'
+            : 'Se abre como una app y puede mandarte avisos.'}
+        </span>
+      </div>
+      <div class="btn-row">
+        {kind === 'prompt' && <button class="btn btn-primario" type="button" onClick={install}>Instalar</button>}
+        <button class="btn btn-texto" type="button" onClick={dismiss}>Ahora no</button>
+      </div>
+    </div>
   );
 }
