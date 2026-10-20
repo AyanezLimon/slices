@@ -203,7 +203,7 @@ export function AvatarPicker({ h }) {
     await attempt(async () => {
       const blob = await resizeToWebp(file);
       const path = `${h.me.id}/avatar.webp`;
-      must(await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: 'image/webp' }));
+      must(await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: blob.type || 'image/webp' }));
       const { data } = supabase.storage.from('avatars').getPublicUrl(path);
       await actions.updateMember(h.me.id, { avatar: { type: 'photo', url: `${data.publicUrl}?v=${Date.now()}` }, color_index: color });
       h.reload();
