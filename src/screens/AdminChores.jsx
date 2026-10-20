@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
 import { ruleFor } from '../../supabase/functions/_shared/schedule.js';
 import { actions } from '../lib/house.js';
-import { Avatar, Icon, Switch, Segmented, attempt } from '../components/ui.jsx';
+import { Avatar, Icon, Switch, Segmented, Sheet, attempt } from '../components/ui.jsx';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 const SHORT = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
@@ -88,6 +88,7 @@ export function ChoreEditor({ h, id }) {
   const [start, setStart] = useState(r?.start_date || h.today);
   const [effective, setEffective] = useState(h.today);
   const [busy, setBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const togglePart = (mid) => {
     if (parts.includes(mid)) {
@@ -220,7 +221,25 @@ export function ChoreEditor({ h, id }) {
       <div class="stack" style="gap:8px">
         <button class="btn btn-primario" type="submit" disabled={busy || !name.trim()}>Guardar tarea</button>
         <a class="btn btn-texto" href="#/admin">Cancelar</a>
+        {chore && <button class="btn btn-peligro" type="button" onClick={() => setConfirmDelete(true)} disabled={busy}>Borrar tarea</button>}
       </div>
+
+      {confirmDelete && (
+        <Sheet label="Borrar tarea" onClose={() => setConfirmDelete(false)}>
+          <div class="stack-sm">
+            <h2 class="titulo">¿Borrar {chore.name}?</h2>
+            <p class="muted">Se borra también su historial, las coberturas y los pedidos pendientes. No se puede deshacer. Si solo quieres dejarla de lado un tiempo, mejor páusala con el interruptor en la lista de tareas.</p>
+          </div>
+          <button class="btn btn-peligro" type="button" disabled={busy} onClick={async () => {
+            setBusy(true);
+            const ok = await attempt(() => actions.deleteChore(chore.id), 'Tarea borrada');
+            setBusy(false);
+            setConfirmDelete(false);
+            if (ok) location.hash = '#/admin';
+          }}>Sí, borrarla</button>
+          <button class="btn btn-texto" type="button" onClick={() => setConfirmDelete(false)}>Cancelar</button>
+        </Sheet>
+      )}
     </form>
   );
 }
