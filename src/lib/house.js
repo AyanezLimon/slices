@@ -148,6 +148,7 @@ export const actions = {
   createInvite: async (memberId) => must(await supabase.rpc('create_invite', { p_member: memberId })),
   deviceHealth: async () => must(await supabase.rpc('device_health')),
   removeDevice: async (id) => must(await supabase.from('push_subscriptions').delete().eq('id', id)),
+  deleteChore: async (id) => { must(await supabase.from('chores').delete().eq('id', id)); return true; },
   saveChore: async (chore, patch) => {
     if (chore?.id) return must(await supabase.from('chores').update(patch).eq('id', chore.id).select().single());
     return must(await supabase.from('chores').insert(patch).select().single());
