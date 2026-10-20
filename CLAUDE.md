@@ -18,6 +18,11 @@ Preferencia del dueño: soluciones directas, sin sobre-ingeniería.
   - `assigneeOn` aplica overrides. `findReturnDate(chore, fecha, quienCubre)` devuelve el siguiente turno base de quien cubre que no tenga override. Ahí paga la persona cubierta.
 - `tests/schedule.test.js`: 18 tests con vitest, todos pasan. Correr `npm test` después de cualquier cambio a schedule.js.
 - `supabase/migrations/…_init.sql`: tablas, RLS, triggers (solo un admin cambia rol/cuenta/estado; siempre queda ≥1 admin; auditoría de chores), RPCs (`bootstrap_house`, `create_invite`, `claim_invite`, `request_cover`, `cancel_cover_request`, `cover_task`, `push_ack`, `device_health`, `ping`), publicación realtime y bucket `avatars`.
+- `supabase/functions/notify/`: Edge Function de avisos (desplegar con `--no-verify-jwt`; `supabase/config.toml` ya lo declara).
+  - `plan.js` decide qué avisar (pura, con tests en `tests/notify-plan.test.js`): recordatorios por persona y tarea con su hora (ventana de recuperación de 6 h, agrupados en un push), devoluciones aunque la tarea esté apagada si `cover.devolver`, *Insistir 20:00*, pedidos de cobertura (`mePiden` / `general`) y "te cubrieron" (`meCubren`, con fecha de devolución).
+  - `index.ts` hace la E/S: `x-cron-secret` corre el ciclo; `Authorization: Bearer <jwt>` + `{test:true}` manda un aviso de prueba al miembro (CORS abierto para la PWA). Dedupe reservando `dedupe_key` en `push_log` antes de enviar; headers `Urgency: high`, `TTL: 14400`, `Topic`; borra suscripciones con 404/410.
+  - Payload del push: `{title, body, tag, url: '#/hoy', ack: {url, key}}`. El SW debe mostrarlo siempre y hacer el acuse a `ack.url`.
+  - Type-check: `deno check --node-modules-dir=none supabase/functions/notify/index.ts`.
 - `supabase/migrations/…_cron.sql`: cron por minuto con secretos en Vault (`project_url`, `cron_secret`) y limpieza semanal.
 - Mockup de las 8 pantallas: canvas de Claude Design "App de Quehaceres" (https://claude.ai/artifact/YDEQXgSx7KmND4q4nWAn9N). Úsalo para **estructura y flujo** (qué hay en cada pantalla, barra inferior Hoy / Admin / Perfil, targets ≥44px). Sus colores son los viejos: **no** los copies.
 - Identidad visual: `design/tokens.json` y `design/README.md` (copia del Design System "Slices", https://claude.ai/artifact/QbyjrEMDHqUyJzNgdeBm8Y). Es la fuente de verdad de colores, tipografía, radios, espacios y sombras. Marca: https://claude.ai/artifact/NZtV1uTAu84ZU2GW5guHvu (ícono: variante 2 "Medio limón" de la fusión C+D).
@@ -33,24 +38,7 @@ Preferencia del dueño: soluciones directas, sin sobre-ingeniería.
 
 ## Lo que FALTA (en este orden)
 
-### 1. Edge Function `supabase/functions/notify/index.ts` (Deno, `npm:web-push`, service role)
-Config `verify_jwt = false`. La función autentica por su cuenta:
-- Header `x-cron-secret` == env `CRON_SECRET` → corre el ciclo.
-- `Authorization: Bearer <jwt de usuario>` + body `{test:true}` → `auth.getUser()` y envía un aviso de prueba solo a ese miembro.
-
-Ciclo (cada minuto, con `nowIn(TZ)`):
-1. **Recordatorios por persona y tarea.** Para cada duty de hoy (`dutiesOn`), si es del miembro, toma la pref `member_prefs.chores[choreId]`. Si no existe, el default es `{on:true, time: chore.default_time, insist:false}`. Se envía cuando `on && time <= ahora` (con ventana de recuperación de 6 h). Si alguien tiene varias, se agrupan en un solo push ("Hoy te toca: X, Y"). Un turno de devolución (override `devuelve` del miembro) entra aunque la pref de la tarea esté apagada si `cover.devolver` está activo, y el texto lo menciona.
-2. **Insistir 20:00.** Si `insist` está activo, la tarea no está en `completions` y ya son ≥ 20:00.
-3. **Pedidos de cobertura.** `cover_requests` pendientes con `notified_at` null: se avisa a `target` si tiene `mePiden`, o a todos los demás participantes con `general` si target es null. Después se marca `notified_at`.
-4. **"Te cubrieron".** `overrides` con reason `cubre` y `notified_at` null: se avisa a `covered_member` si tiene `meCubren`, incluyendo la fecha de devolución (override `devuelve` con el mismo `pair_id`). Después se marca `notified_at`.
-
-Reglas de envío:
-- **Dedupe:** antes de enviar se inserta en `push_log` con `dedupe_key` única (`rem|member|chore|date`, `night|…`, `req|id|member`, `cov|overrideId`). Si hay conflicto, no se envía.
-- **Headers:** `Urgency: high`, `TTL: 14400`, `Topic` corto (≤32 caracteres base64url) para colapsar repetidos.
-- **Payload:** `{title, body, tag, url: '#/hoy', ack: {url: SUPABASE_URL + '/rest/v1/rpc/push_ack', key: SUPABASE_ANON_KEY}}`.
-- **Al enviar:** `last_sent_at = now()` y `unconfirmed_count += 1`. Con respuesta 404 o 410, se borra la suscripción.
-
-### 2. PWA (`src/`)
+### 1. PWA (`src/`)
 - `public/sw.js`:
   - En el evento `push`, **siempre** `event.waitUntil(showNotification(...))`. En iOS, un push sin notificación hace que se revoque la suscripción.
   - En paralelo, `fetch` a `ack.url` con body `{p_endpoint}` (obtenido de `registration.pushManager.getSubscription()`) y headers `apikey` y `Authorization: Bearer <key>`.
@@ -85,7 +73,7 @@ Pantallas (ver mockup):
   - Perfil sin cuenta y *Quitar* (`active = false`).
   - Alerta cuando `device_health()` muestra `unconfirmed_count >= 3` y no hay acuse en 48 h.
 
-### 3. CI y docs
+### 2. CI y docs
 - `.github/workflows/deploy.yml`: build y deploy a Pages. Las variables `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` y `VITE_VAPID_PUBLIC_KEY` salen de repo variables.
 - `.github/workflows/keepalive.yml`: cron semanal que hace `POST {SUPABASE_URL}/rest/v1/rpc/ping` con la anon key.
 - Íconos PNG 192/512 (`any`), 512 maskable (rodaja dentro del 80 % central) y `apple-touch-icon` 180 (iOS no usa SVG para la pantalla de inicio). Se generan desde el SVG del ícono (variante 2).
