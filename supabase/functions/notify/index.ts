@@ -201,9 +201,12 @@ async function cycle(db: SupabaseClient) {
     if (r.target) {
       recipients = prefOf(r.target).cover.mePiden ? [r.target] : [];
     } else {
+      // Pedido abierto: avisa a quienes participan en la tarea (como el panel de Hoy),
+      // y a los demás solo si activaron "Cualquier pedido abierto en la casa".
       const rule = chore ? ruleFor(chore, r.date) : null;
-      recipients = (rule?.participants ?? [...names.keys()])
-        .filter((id: string) => id !== r.requester && names.has(id) && prefOf(id).cover.general);
+      const parts = new Set<string>(rule?.participants ?? [...names.keys()]);
+      recipients = [...names.keys()].filter((id) => id !== r.requester &&
+        (parts.has(id) ? prefOf(id).cover.mePiden : prefOf(id).cover.general));
     }
     for (const id of recipients) {
       await send(db, id, [`req|${r.id}|${id}`], 'cover_request', {
