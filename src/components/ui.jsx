@@ -126,7 +126,9 @@ function wedge(i, n, lift) {
   const a0 = Math.PI + (i * Math.PI) / n, a1 = Math.PI + ((i + 1) * Math.PI) / n, m = (a0 + a1) / 2;
   const dx = lift * Math.cos(m), dy = lift * Math.sin(m);
   const p = (r, a) => `${(256 + dx + r * Math.cos(a)).toFixed(1)} ${(350 + dy + r * Math.sin(a)).toFixed(1)}`;
-  return `M${p(16, a0)} L${p(170, a0)} A170 170 0 0 1 ${p(170, a1)} L${p(16, a1)} Z `;
+  // El gajo levantado se achica lo mismo que sube, para no tocar la cáscara.
+  const r = 170 - lift;
+  return `M${p(16, a0)} L${p(r, a0)} A${r} ${r} 0 0 1 ${p(r, a1)} L${p(16, a1)} Z `;
 }
 
 /** segs: array de 'done' | 'todo' | 'mine' (máx. 8; se escala si hay más). */
@@ -136,7 +138,7 @@ export function Gauge({ total, doneCount, mineFirst, width = 132, label }) {
   let done = '', todo = '', mine = '';
   for (let i = 0; i < n; i++) {
     if (i < scaledDone) done += wedge(i, n, 0);
-    else if (mineFirst && i === scaledDone) mine = wedge(i, n, 30);
+    else if (mineFirst && i === scaledDone) mine = wedge(i, n, n > 2 ? 14 : 0); // con 1–2 gajos, subirlo lo descuadra
     else todo += wedge(i, n, 0);
   }
   return (
