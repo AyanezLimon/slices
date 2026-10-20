@@ -1,0 +1,4 @@
+project_id = "slices"
+
+[functions.notify]
+verify_jwt = false

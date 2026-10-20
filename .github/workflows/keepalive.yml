@@ -1,0 +1,18 @@
+name: Keepalive
+
+# El plan gratis de Supabase pausa proyectos tras 7 días sin actividad.
+on:
+  schedule:
+    - cron: "17 15 * * 1,4"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: vars.SUPABASE_URL != ''
+    steps:
+      - run: |
+          curl -fsS -X POST "${{ vars.SUPABASE_URL }}/rest/v1/rpc/ping" \
+            -H "apikey: ${{ vars.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ vars.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" -d '{}'

@@ -1,0 +1,116 @@
+name: Release
+
+# Publicar un release en GitHub = nueva versión de Slices en todos los celulares.
+# 1) tests + build con la versión del tag, 2) deploy a GitHub Pages,
+# 3) migraciones y Edge Function en Supabase, 4) aviso "Slices se actualizó" a la casa.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versión a publicar (ej. v1.0.1)"
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ github.event.release.tag_name || inputs.version }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Build
+        run: npm run build
+        env:
+          APP_VERSION: ${{ env.VERSION }}
+          BASE_PATH: /${{ github.event.repository.name }}/
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  backend:
+    runs-on: ubuntu-latest
+    if: vars.SUPABASE_PROJECT_REF != ''
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.54.11
+      - name: Migraciones
+        run: |
+          supabase link --project-ref "${{ vars.SUPABASE_PROJECT_REF }}" -p "$SUPABASE_DB_PASSWORD"
+          supabase db push -p "$SUPABASE_DB_PASSWORD"
+      - name: Secretos de la función
+        run: |
+          supabase secrets set --project-ref "${{ vars.SUPABASE_PROJECT_REF }}" \
+            VAPID_PUBLIC_KEY="${{ vars.VAPID_PUBLIC_KEY }}" \
+            VAPID_PRIVATE_KEY="${{ secrets.VAPID_PRIVATE_KEY }}" \
+            VAPID_SUBJECT="${{ vars.VAPID_SUBJECT }}" \
+            CRON_SECRET="${{ secrets.CRON_SECRET }}" \
+            HOUSE_TZ="America/Costa_Rica"
+      - name: Edge Function
+        run: supabase functions deploy notify --no-verify-jwt --project-ref "${{ vars.SUPABASE_PROJECT_REF }}"
+      - name: Conectar el cron con la función
+        run: |
+          sleep 5
+          curl -fsS -X POST "${{ vars.SUPABASE_URL }}/functions/v1/notify" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -d '{"run":"setup"}'
+
+  deploy:
+    needs: [build, backend]
+    if: always() && needs.build.result == 'success' && needs.backend.result != 'failure'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.pages.outputs.page_url }}
+    steps:
+      - id: pages
+        uses: actions/deploy-pages@v4
+
+  notify:
+    needs: deploy
+    if: github.event_name == 'release' && vars.SUPABASE_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Esperar a que Pages sirva la versión nueva
+        run: |
+          for i in $(seq 1 30); do
+            v=$(curl -fsS "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/version.json?t=$RANDOM" | jq -r .version || true)
+            [ "$v" = "$VERSION" ] && exit 0
+            sleep 10
+          done
+          echo "Pages aún no sirve $VERSION; se avisa igual."
+      - name: Avisar a la casa
+        env:
+          NOTES: ${{ github.event.release.body }}
+        run: |
+          body=$(jq -n --arg v "$VERSION" --arg n "$NOTES" '{run:"release",version:$v,notes:$n}')
+          curl -fsS -X POST "${{ vars.SUPABASE_URL }}/functions/v1/notify" \
+            -H "Content-Type: application/json" \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            -d "$body"
