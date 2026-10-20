@@ -36,5 +36,21 @@ PWA familiar para repartir quehaceres (familia Limón: Santiago, Isis, Victoria,
 ## Publicar
 Un release `vX.Y.Z` en GitHub dispara `.github/workflows/release.yml`: tests y build, migraciones y función en Supabase, deploy a Pages y aviso a la casa. Las variables y secretos necesarios están en el README.
 
+## Estado y siguiente paso: puesta en marcha
+El código está completo: compila y los 18 tests pasan. Todavía **no hay nada configurado**: Supabase, Pages, variables y secretos del repo están pendientes. Orden sugerido:
+
+1. **Supabase.** Aries crea el proyecto y obtiene la URL, la anon key, el ref y la contraseña de la base.
+   - Si tienes la CLI y acceso: `supabase link`, luego `supabase db push`.
+   - Si no, el workflow Release lo hace con `SUPABASE_ACCESS_TOKEN` y `SUPABASE_DB_PASSWORD`.
+2. **Llaves VAPID** con `npx web-push generate-vapid-keys` y un `CRON_SECRET` con `openssl rand -hex 32`.
+3. **Variables y secretos del repo** según la tabla del README. Con `gh`: `gh variable set …` y `gh secret set …`.
+4. **Pages.** Source en "GitHub Actions" (`gh api -X POST repos/AyanezLimon/slices/pages -f build_type=workflow`) y permitir tags `v*` en el environment `github-pages` (`gh api -X POST repos/AyanezLimon/slices/environments/github-pages/deployment-branch-policies -f name='v*' -f type=tag`).
+5. **Google OAuth** y las URLs de Auth en Supabase (pasos en el README). La URL de la app es `https://ayanezlimon.github.io/slices/`.
+6. **Primer release** `v1.0.0`. El workflow despliega la función y llama `run: "setup"` para que el cron funcione. Después, abrir la app, crear la casa e invitar a la familia.
+7. **Verificar:**
+   - El aviso de prueba desde Perfil.
+   - Que `select * from cron.job_run_details order by start_time desc limit 5` muestre ejecuciones exitosas.
+   - La migración de storage (políticas en `storage.objects`). Si falla por permisos, crear esas tres políticas desde el dashboard.
+
 ## Pendiente de decidir con Aries
 - Qué pasa si nadie hace una tarea. Por ahora queda sin marcar; no se arrastra al día siguiente.
