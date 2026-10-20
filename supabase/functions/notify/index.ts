@@ -1,182 +1,260 @@
-// Edge Function "notify": la llama pg_cron cada minuto (header x-cron-secret) y la PWA
-// para "Probar aviso" (Authorization: Bearer <jwt> + body {test:true}).
-// Se despliega con --no-verify-jwt: la autenticación la hace esta función.
-
-import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
-// @deno-types="npm:@types/web-push@3.6.4"
+// Slices · Edge Function "notify"
+// - Cron (header x-cron-secret): recordatorios por persona y tarea, insistencia 20:00,
+//   pedidos de cobertura y "te cubrieron". body {run:"release", version, notes} = aviso de actualización.
+// - Usuario con sesión (Authorization: Bearer <jwt>): aviso de prueba a sus dispositivos.
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 import webpush from 'npm:web-push@3.6.7';
-import { DEFAULT_TZ, nowIn, addDays } from '../_shared/schedule.js';
-import { planReminders, reminderMessages, planCoverRequests, planCovered } from './plan.js';
+import { nowIn, dutiesOn, indexOverrides, ruleFor, addDays, DEFAULT_TZ } from '../_shared/schedule.js';
+import { relDate, listJoin } from '../_shared/format.js';
 
-const env = (k: string) => {
-  const v = Deno.env.get(k);
-  if (!v) throw new Error(`Falta la variable ${k}`);
-  return v;
-};
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+const CRON_SECRET = Deno.env.get('CRON_SECRET') ?? '';
+const TZ = Deno.env.get('HOUSE_TZ') ?? DEFAULT_TZ;
+const CATCH_UP_MIN = 6 * 60;
+const NIGHT = '20:00';
 
-const SUPABASE_URL = env('SUPABASE_URL');
-const ANON_KEY = env('SUPABASE_ANON_KEY');
-const CRON_SECRET = env('CRON_SECRET');
-const db = createClient(SUPABASE_URL, env('SUPABASE_SERVICE_ROLE_KEY'), { auth: { persistSession: false } });
-
-webpush.setVapidDetails(env('VAPID_SUBJECT'), env('VAPID_PUBLIC_KEY'), env('VAPID_PRIVATE_KEY'));
+webpush.setVapidDetails(
+  Deno.env.get('VAPID_SUBJECT') ?? 'mailto:admin@example.com',
+  Deno.env.get('VAPID_PUBLIC_KEY')!,
+  Deno.env.get('VAPID_PRIVATE_KEY')!
+);
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-type Sub = { id: string; member_id: string; endpoint: string; p256dh: string; auth: string; unconfirmed_count: number };
-type Message = { memberId: string; keys: string[]; kind: string; title: string; body: string; tag: string };
+type Payload = { title: string; body: string; tag: string; url?: string };
+type Prefs = { chores: Record<string, { on?: boolean; time?: string; insist?: boolean }>; cover: Record<string, boolean> };
+const DEFAULT_COVER = { meCubren: true, mePiden: true, devolver: true, general: false, actualizaciones: true };
 
-// Topic: ≤32 caracteres del alfabeto base64url. Colapsa avisos repetidos con la misma etiqueta.
-const topicOf = (tag: string) => tag.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const body = await req.json().catch(() => ({}));
+  const db = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false } });
 
-async function sendToMember(subs: Sub[], msg: Omit<Message, 'keys' | 'memberId' | 'kind'>) {
-  const payload = JSON.stringify({
-    title: msg.title,
-    body: msg.body,
-    tag: msg.tag,
-    url: '#/hoy',
+  if (CRON_SECRET && req.headers.get('x-cron-secret') === CRON_SECRET) {
+    try {
+      if (body.run === 'release') return json(await releaseNotice(db, String(body.version ?? ''), String(body.notes ?? '')));
+      if (body.run === 'setup') {
+        const { error } = await db.from('app_config').upsert([
+          { key: 'project_url', value: SUPABASE_URL, updated_at: new Date().toISOString() },
+          { key: 'cron_secret', value: CRON_SECRET, updated_at: new Date().toISOString() }
+        ]);
+        return json(error ? { error: error.message } : { ok: true });
+      }
+      return json(await cycle(db));
+    } catch (e) {
+      console.error(e);
+      return json({ error: String(e) }, 500);
+    }
+  }
+
+  const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '');
+  const { data: auth } = await db.auth.getUser(jwt);
+  if (!auth?.user) return json({ error: 'No autorizado' }, 401);
+  const { data: me } = await db.from('members').select('id').eq('user_id', auth.user.id).eq('active', true).maybeSingle();
+  if (!me) return json({ error: 'No eres miembro de la casa' }, 403);
+  const r = await send(db, me.id, [`test|${me.id}|${Date.now()}`], 'test', {
+    title: 'Slices',
+    body: 'Aviso de prueba. Si lo ves con el celular bloqueado, todo está bien.',
+    tag: 'test'
+  });
+  return json(r);
+});
+
+// ───────────────────────── Envío ─────────────────────────
+
+/** Reserva claves de dedupe; devuelve solo las que este proceso ganó. */
+async function claim(db: SupabaseClient, memberId: string, keys: string[], kind: string) {
+  if (!keys.length) return [];
+  const { data, error } = await db
+    .from('push_log')
+    .upsert(keys.map((k) => ({ dedupe_key: k, member_id: memberId, kind })), { onConflict: 'dedupe_key', ignoreDuplicates: true })
+    .select('dedupe_key');
+  if (error) throw error;
+  return (data ?? []).map((r) => r.dedupe_key as string);
+}
+
+function topicFor(tag: string) {
+  return tag.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32) || 'slices';
+}
+
+async function deliver(db: SupabaseClient, memberId: string, payload: Payload) {
+  const { data: subs } = await db.from('push_subscriptions').select('*').eq('member_id', memberId);
+  let delivered = 0, failed = 0;
+  const message = JSON.stringify({
+    ...payload,
+    url: payload.url ?? '#/hoy',
     ack: { url: `${SUPABASE_URL}/rest/v1/rpc/push_ack`, key: ANON_KEY }
   });
-  let delivered = 0, failed = 0;
-  await Promise.all(subs.map(async (s) => {
+  for (const s of subs ?? []) {
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-        payload,
-        { TTL: 14400, urgency: 'high', topic: topicOf(msg.tag) }
+        message,
+        { TTL: 4 * 3600, urgency: 'high', topic: topicFor(payload.tag) }
       );
       delivered++;
-      s.unconfirmed_count += 1;
       await db.from('push_subscriptions')
-        .update({ last_sent_at: new Date().toISOString(), unconfirmed_count: s.unconfirmed_count })
+        .update({ last_sent_at: new Date().toISOString(), unconfirmed_count: (s.unconfirmed_count ?? 0) + 1 })
         .eq('id', s.id);
     } catch (e) {
       failed++;
       const code = (e as { statusCode?: number }).statusCode;
-      if (code === 404 || code === 410) {
-        await db.from('push_subscriptions').delete().eq('id', s.id);
-      } else {
-        console.error('push falló', code, (e as Error).message);
-      }
+      if (code === 404 || code === 410) await db.from('push_subscriptions').delete().eq('id', s.id);
+      else console.error('push error', code, String(e));
     }
-  }));
+  }
   return { delivered, failed };
 }
 
-/** Reserva dedupe_keys en push_log y devuelve las que no existían (las que sí hay que enviar). */
-async function reserve(rows: { member_id: string; dedupe_key: string; kind: string }[]) {
-  if (!rows.length) return new Set<string>();
-  const { data, error } = await db.from('push_log')
-    .upsert(rows, { onConflict: 'dedupe_key', ignoreDuplicates: true })
-    .select('dedupe_key');
-  if (error) { console.error('push_log', error.message); return new Set<string>(); }
-  return new Set(data.map((r) => r.dedupe_key));
+async function send(db: SupabaseClient, memberId: string, keys: string[], kind: string, payload: Payload) {
+  const won = await claim(db, memberId, keys, kind);
+  if (!won.length) return { skipped: true };
+  const r = await deliver(db, memberId, payload);
+  await db.from('push_log').update({ payload, delivered: r.delivered, failed: r.failed }).in('dedupe_key', won);
+  return { ...r, keys: won };
 }
 
-async function deliver(msg: Message, subsByMember: Map<string, Sub[]>) {
-  const res = await sendToMember(subsByMember.get(msg.memberId) || [], msg);
-  await db.from('push_log')
-    .update({ ...res, payload: { title: msg.title, body: msg.body } })
-    .in('dedupe_key', msg.keys);
-  return res.delivered;
-}
+// ───────────────────────── Ciclo por minuto ─────────────────────────
 
-async function runCycle() {
-  const nowMs = Date.now();
-  const { date: today, time: now } = nowIn(DEFAULT_TZ, new Date(nowMs));
+const minutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
 
-  const [members, chores, overrides, completions, prefs, subs, requests, covers] = await Promise.all([
-    db.from('members').select('id, name').eq('active', true),
-    db.from('chores').select('id, name, active, default_time, rules').eq('active', true),
-    db.from('overrides').select('id, chore_id, date, assignee, covered_member, reason, pair_id').gte('date', addDays(today, -1)),
-    db.from('completions').select('chore_id, date').eq('date', today),
-    db.from('member_prefs').select('member_id, chores, cover'),
-    db.from('push_subscriptions').select('id, member_id, endpoint, p256dh, auth, unconfirmed_count'),
-    db.from('cover_requests').select('id, chore_id, date, requester, target').eq('status', 'pending').is('notified_at', null),
-    db.from('overrides').select('id, chore_id, date, assignee, covered_member, pair_id, created_at').eq('reason', 'cubre').is('notified_at', null)
+async function cycle(db: SupabaseClient) {
+  const { date, time } = nowIn(TZ);
+  const [members, chores, overrides, completions, prefsRows, requests, coverOv, subs] = await Promise.all([
+    db.from('members').select('id,name,active').eq('active', true),
+    db.from('chores').select('*').eq('active', true),
+    db.from('overrides').select('*').gte('date', addDays(date, -1)),
+    db.from('completions').select('chore_id,date').eq('date', date),
+    db.from('member_prefs').select('*'),
+    db.from('cover_requests').select('*').eq('status', 'pending').is('notified_at', null),
+    db.from('overrides').select('*').eq('reason', 'cubre').is('notified_at', null),
+    db.from('push_subscriptions').select('member_id')
   ]);
-  for (const r of [members, chores, overrides, completions, prefs, subs, requests, covers]) {
-    if (r.error) throw new Error(r.error.message);
-  }
+  for (const r of [members, chores, overrides, completions, prefsRows, requests, coverOv, subs]) if (r.error) throw r.error;
 
-  const membersById = new Map(members.data!.map((m) => [m.id, m]));
-  const prefsByMember = new Map(prefs.data!.map((p) => [p.member_id, p]));
-  const subsByMember = new Map<string, Sub[]>();
-  for (const s of subs.data as Sub[]) {
-    if (!membersById.has(s.member_id)) continue;
-    if (!subsByMember.has(s.member_id)) subsByMember.set(s.member_id, []);
-    subsByMember.get(s.member_id)!.push(s);
-  }
-  const eligible = new Set(subsByMember.keys());
+  const names = new Map((members.data ?? []).map((m) => [m.id, m.name as string]));
+  const choreById = new Map((chores.data ?? []).map((c) => [c.id, c]));
+  const withDevices = new Set((subs.data ?? []).map((s) => s.member_id as string));
+  const prefs = new Map<string, Prefs>((prefsRows.data ?? []).map((p) => [p.member_id, { chores: p.chores ?? {}, cover: { ...DEFAULT_COVER, ...(p.cover ?? {}) } }]));
+  const prefOf = (id: string): Prefs => prefs.get(id) ?? { chores: {}, cover: DEFAULT_COVER };
+  const done = new Set((completions.data ?? []).map((c) => c.chore_id as string));
+  const ov = indexOverrides(overrides.data ?? []);
+  const duties = dutiesOn(chores.data ?? [], date, ov);
+  const now = minutes(time);
+  const out: Record<string, unknown> = { date, time };
 
-  // Devoluciones de las coberturas pendientes de avisar (pueden caer más allá de mañana).
-  const pairIds = covers.data!.map((o) => o.pair_id).filter(Boolean);
-  const returns = new Map<string, string>();
-  if (pairIds.length) {
-    const { data, error } = await db.from('overrides').select('pair_id, date').eq('reason', 'devuelve').in('pair_id', pairIds);
-    if (error) throw new Error(error.message);
-    for (const r of data) returns.set(r.pair_id, r.date);
+  // 1 y 2. Recordatorios e insistencia
+  let reminders = 0;
+  for (const memberId of withDevices) {
+    if (!names.has(memberId)) continue;
+    const p = prefOf(memberId);
+    const mine = duties.filter((d) => d.assignee === memberId && !done.has(d.chore.id));
+    const dueKeys: string[] = [], dueNames: string[] = [], nightKeys: string[] = [], nightNames: string[] = [];
+    for (const d of mine) {
+      const cp = p.chores[d.chore.id] ?? {};
+      const isReturn = d.override?.reason === 'devuelve';
+      const on = cp.on ?? true;
+      const at = (cp.time ?? String(d.chore.default_time)).slice(0, 5);
+      if ((on || (isReturn && p.cover.devolver)) && minutes(at) <= now && now - minutes(at) <= CATCH_UP_MIN) {
+        dueKeys.push(`rem|${memberId}|${d.chore.id}|${date}`);
+        dueNames.push(isReturn ? `${d.chore.name} (devolución)` : d.chore.name);
+      }
+      if (on && cp.insist && time >= NIGHT) {
+        nightKeys.push(`night|${memberId}|${d.chore.id}|${date}`);
+        nightNames.push(d.chore.name);
+      }
+    }
+    if (dueKeys.length) {
+      const won = await claim(db, memberId, dueKeys, 'reminder');
+      if (won.length) {
+        const list = dueNames.filter((_, i) => won.includes(dueKeys[i]));
+        const r = await deliver(db, memberId, { title: 'Hoy te toca', body: listJoin(list), tag: `rem-${date}` });
+        await db.from('push_log').update({ delivered: r.delivered, failed: r.failed }).in('dedupe_key', won);
+        reminders++;
+      }
+    }
+    if (nightKeys.length) {
+      const won = await claim(db, memberId, nightKeys, 'night');
+      if (won.length) {
+        const list = nightNames.filter((_, i) => won.includes(nightKeys[i]));
+        await deliver(db, memberId, { title: 'Todavía te falta', body: listJoin(list), tag: `night-${date}` });
+        reminders++;
+      }
+    }
   }
+  out.reminders = reminders;
 
-  const ctx = { today, chores: chores.data!, membersById, prefsByMember, eligible };
+  // 3. Pedidos de cobertura
+  let reqs = 0;
+  for (const r of requests.data ?? []) {
+    const chore = choreById.get(r.chore_id);
+    const requester = names.get(r.requester) ?? 'Alguien';
+    let recipients: string[];
+    if (r.target) {
+      recipients = prefOf(r.target).cover.mePiden ? [r.target] : [];
+    } else {
+      const rule = chore ? ruleFor(chore, r.date) : null;
+      recipients = (rule?.participants ?? [...names.keys()])
+        .filter((id: string) => id !== r.requester && names.has(id) && prefOf(id).cover.general);
+    }
+    for (const id of recipients) {
+      await send(db, id, [`req|${r.id}|${id}`], 'cover_request', {
+        title: `${requester} no puede con ${chore?.name ?? 'una tarea'}`,
+        body: `¿La cubres ${relDate(r.date, date)}? Luego te devuelve un turno.`,
+        tag: `req-${r.id.slice(0, 8)}`
+      });
+    }
+    await db.from('cover_requests').update({ notified_at: new Date().toISOString() }).eq('id', r.id);
+    reqs++;
+  }
+  out.requests = reqs;
+
+  // 4. "Te cubrieron"
+  let covered = 0;
+  for (const o of coverOv.data ?? []) {
+    if (o.covered_member && prefOf(o.covered_member).cover.meCubren) {
+      const chore = choreById.get(o.chore_id);
+      const back = (overrides.data ?? []).find((x) => x.pair_id === o.pair_id && x.reason === 'devuelve')
+        ?? (await db.from('overrides').select('date').eq('pair_id', o.pair_id).eq('reason', 'devuelve').maybeSingle()).data;
+      const who = names.get(o.assignee) ?? 'Alguien';
+      await send(db, o.covered_member, [`cov|${o.id}`], 'covered', {
+        title: `${who} te cubrió`,
+        body: back ? `${chore?.name ?? 'Tu tarea'} ${relDate(o.date, date)}. Te toca su turno ${relDate(back.date, date)}.` : `${chore?.name ?? 'Tu tarea'} ${relDate(o.date, date)}.`,
+        tag: `cov-${o.id.slice(0, 8)}`
+      });
+    }
+    await db.from('overrides').update({ notified_at: new Date().toISOString() }).eq('id', o.id);
+    covered++;
+  }
+  out.covered = covered;
+  return out;
+}
+
+// ───────────────────────── Aviso de nueva versión ─────────────────────────
+
+async function releaseNotice(db: SupabaseClient, version: string, notes: string) {
+  if (!version) return { error: 'Falta version' };
+  const { data: members } = await db.from('members').select('id').eq('active', true);
+  const { data: prefsRows } = await db.from('member_prefs').select('member_id,cover');
+  const off = new Set((prefsRows ?? []).filter((p) => p.cover?.actualizaciones === false).map((p) => p.member_id));
+  const firstLine = notes.split('\n').map((l) => l.replace(/^[#*\-\s]+/, '').trim()).find(Boolean) ?? '';
   let sent = 0;
-
-  // Recordatorios: se reserva cada (persona, tarea) y se agrupa solo lo que no había salido.
-  const items = planReminders({ ...ctx, now, overrides: overrides.data!, completions: completions.data! });
-  const fresh = await reserve(items.map((it) => ({ member_id: it.memberId, dedupe_key: it.key, kind: it.kind })));
-  for (const msg of reminderMessages(items.filter((it) => fresh.has(it.key)), membersById, today)) {
-    sent += await deliver(msg as Message, subsByMember);
+  for (const m of members ?? []) {
+    if (off.has(m.id)) continue;
+    const r = await send(db, m.id, [`rel|${version}|${m.id}`], 'release', {
+      title: `Slices se actualizó a ${version}`,
+      body: firstLine ? `${firstLine.slice(0, 120)} · Ábrela para usarla.` : 'Ábrela para usar la versión nueva.',
+      tag: 'release'
+    });
+    if (!('skipped' in r)) sent++;
   }
-
-  const reqPlan = planCoverRequests({ ...ctx, requests: requests.data! });
-  const covPlan = planCovered({ ...ctx, nowMs, covers: covers.data!, returns });
-  for (const msg of [...reqPlan.messages, ...covPlan.messages] as Message[]) {
-    const ok = await reserve(msg.keys.map((k) => ({ member_id: msg.memberId, dedupe_key: k, kind: msg.kind })));
-    if (ok.size) sent += await deliver(msg, subsByMember);
-  }
-
-  const stamp = new Date(nowMs).toISOString();
-  if (reqPlan.markIds.length) await db.from('cover_requests').update({ notified_at: stamp }).in('id', reqPlan.markIds);
-  if (covPlan.markIds.length) await db.from('overrides').update({ notified_at: stamp }).in('id', covPlan.markIds);
-
-  return { today, now, sent };
+  return { version, sent };
 }
-
-async function runTest(req: Request) {
-  const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  const { data: auth, error } = await db.auth.getUser(jwt);
-  if (error || !auth.user) return json({ error: 'Sesión inválida' }, 401);
-
-  const { data: member } = await db.from('members').select('id').eq('user_id', auth.user.id).eq('active', true).maybeSingle();
-  if (!member) return json({ error: 'No eres miembro de la casa' }, 403);
-
-  const { data: subs } = await db.from('push_subscriptions')
-    .select('id, member_id, endpoint, p256dh, auth, unconfirmed_count').eq('member_id', member.id);
-  if (!subs?.length) return json({ error: 'No hay dispositivos con avisos activados' }, 404);
-
-  const res = await sendToMember(subs as Sub[], { title: 'Slices', body: 'Así te van a llegar los avisos.', tag: 'test' });
-  await db.from('push_log').insert({
-    member_id: member.id, dedupe_key: `test|${member.id}|${Date.now()}`, kind: 'test', ...res
-  });
-  return json(res);
-}
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
-  if (req.method !== 'POST') return json({ error: 'Solo POST' }, 405);
-  try {
-    if (req.headers.get('x-cron-secret') === CRON_SECRET) return json(await runCycle());
-    const body = await req.json().catch(() => ({}));
-    if (body?.test === true && req.headers.get('Authorization')) return await runTest(req);
-    return json({ error: 'No autorizado' }, 401);
-  } catch (e) {
-    console.error(e);
-    return json({ error: (e as Error).message }, 500);
-  }
-});

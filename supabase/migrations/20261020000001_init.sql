@@ -1,4 +1,4 @@
--- Slices · esquema inicial (una sola casa por proyecto de Supabase)
+-- Quehaceres · esquema inicial (una sola casa por proyecto de Supabase)
 
 create extension if not exists pgcrypto;
 
@@ -7,7 +7,7 @@ create extension if not exists pgcrypto;
 create table public.members (
   id          uuid primary key default gen_random_uuid(),
   name        text not null check (length(trim(name)) > 0),
-  color       int not null default 5 check (color between 1 and 5), -- índice de persona-1…5 en design/tokens.json
+  color       text not null default '#0E7C66',
   -- {"type":"icon","icon":"sol","color":"verde"} | {"type":"photo","url":"..."}
   avatar      jsonb not null default '{"type":"initial"}',
   role        text not null default 'member' check (role in ('admin', 'member')),
@@ -71,7 +71,6 @@ create table public.member_prefs (
   -- {"<choreId>": {"on": true, "time": "18:30", "insist": false}}
   chores      jsonb not null default '{}',
   cover       jsonb not null default '{"meCubren": true, "mePiden": true, "devolver": true, "general": false}',
-  theme       text not null default 'system' check (theme in ('system', 'light', 'dark')),
   updated_at  timestamptz not null default now()
 );
 

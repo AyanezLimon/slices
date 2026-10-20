@@ -1,4 +1,3 @@
-# Config mínima del CLI de Supabase; lo demás usa los valores por defecto.
 project_id = "slices"
 
 [functions.notify]

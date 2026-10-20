@@ -1,24 +1,31 @@
 -- Cron cada minuto → Edge Function "notify".
--- Antes de aplicar, guarda dos secretos en Vault (SQL editor):
---   select vault.create_secret('https://<ref>.supabase.co', 'project_url');
---   select vault.create_secret('<el mismo valor que CRON_SECRET de la función>', 'cron_secret');
+-- La URL del proyecto y el secreto del cron los guarda la propia función en app_config
+-- (el workflow de release la llama con {"run":"setup"} después de desplegarla).
 
-create extension if not exists pg_cron;
-create extension if not exists pg_net;
+create extension if not exists pg_cron with schema pg_catalog;
+create extension if not exists pg_net with schema extensions;
+
+create table if not exists public.app_config (
+  key    text primary key,
+  value  text not null,
+  updated_at timestamptz not null default now()
+);
+alter table public.app_config enable row level security; -- sin políticas: solo service role y cron
 
 select cron.schedule(
   'slices-notify',
   '* * * * *',
   $$
   select net.http_post(
-    url := (select decrypted_secret from vault.decrypted_secrets where name = 'project_url') || '/functions/v1/notify',
+    url := (select value from public.app_config where key = 'project_url') || '/functions/v1/notify',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-cron-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'cron_secret')
+      'x-cron-secret', (select value from public.app_config where key = 'cron_secret')
     ),
     body := '{"run": "cycle"}'::jsonb,
     timeout_milliseconds := 25000
-  );
+  )
+  where exists (select 1 from public.app_config where key = 'cron_secret');
   $$
 );
 
