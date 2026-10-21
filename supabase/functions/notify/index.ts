@@ -4,7 +4,7 @@
 // - Usuario con sesión (Authorization: Bearer <jwt>): aviso de prueba a sus dispositivos.
 import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.45.4';
 import webpush from 'npm:web-push@3.6.7';
-import { nowIn, dutiesOn, indexOverrides, ruleFor, addDays, DEFAULT_TZ } from '../_shared/schedule.js';
+import { nowIn, dutiesOn, indexOverrides, indexBySlot, lookupSlot, ruleFor, peopleIn, addDays, DEFAULT_TZ } from '../_shared/schedule.js';
 import { relDate, listJoin } from '../_shared/format.js';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -132,7 +132,7 @@ async function cycle(db: SupabaseClient) {
     db.from('members').select('id,name,active').eq('active', true),
     db.from('chores').select('*').eq('active', true),
     db.from('overrides').select('*').gte('date', addDays(date, -1)),
-    db.from('completions').select('chore_id,date').eq('date', date),
+    db.from('completions').select('chore_id,date,slot_of').eq('date', date),
     db.from('member_prefs').select('*'),
     db.from('cover_requests').select('*').eq('status', 'pending').is('notified_at', null),
     db.from('overrides').select('*').eq('reason', 'cubre').is('notified_at', null),
@@ -145,9 +145,12 @@ async function cycle(db: SupabaseClient) {
   const withDevices = new Set((subs.data ?? []).map((s) => s.member_id as string));
   const prefs = new Map<string, Prefs>((prefsRows.data ?? []).map((p) => [p.member_id, { chores: p.chores ?? {}, cover: { ...DEFAULT_COVER, ...(p.cover ?? {}) } }]));
   const prefOf = (id: string): Prefs => prefs.get(id) ?? { chores: {}, cover: DEFAULT_COVER };
-  const done = new Set((completions.data ?? []).map((c) => c.chore_id as string));
+  const doneIdx = indexBySlot(completions.data ?? []);
   const ov = indexOverrides(overrides.data ?? []);
   const duties = dutiesOn(chores.data ?? [], date, ov);
+  // Hecha = su puesto tiene completada (las viejas sin puesto valen para el primero).
+  const isDone = (d: (typeof duties)[number]) =>
+    Boolean(lookupSlot(doneIdx, d.chore.id, date, d.slot, duties.find((x) => x.chore.id === d.chore.id) === d));
   const now = minutes(time);
   const out: Record<string, unknown> = { date, time };
 
@@ -156,7 +159,8 @@ async function cycle(db: SupabaseClient) {
   for (const memberId of withDevices) {
     if (!names.has(memberId)) continue;
     const p = prefOf(memberId);
-    const mine = duties.filter((d) => d.assignee === memberId && !done.has(d.chore.id));
+    const mine = duties.filter((d) => d.assignee === memberId && !isDone(d))
+      .filter((d, i, all) => all.findIndex((x) => x.chore.id === d.chore.id) === i); // un aviso por tarea
     const dueKeys: string[] = [], dueNames: string[] = [], nightKeys: string[] = [], nightNames: string[] = [];
     for (const d of mine) {
       const cp = p.chores[d.chore.id] ?? {};
@@ -204,7 +208,7 @@ async function cycle(db: SupabaseClient) {
       // Pedido abierto: avisa a quienes participan en la tarea (como el panel de Hoy),
       // y a los demás solo si activaron "Cualquier pedido abierto en la casa".
       const rule = chore ? ruleFor(chore, r.date) : null;
-      const parts = new Set<string>(rule?.participants ?? [...names.keys()]);
+      const parts = new Set<string>(rule ? peopleIn(rule) : [...names.keys()]);
       recipients = [...names.keys()].filter((id) => id !== r.requester &&
         (parts.has(id) ? prefOf(id).cover.mePiden : prefOf(id).cover.general));
     }
