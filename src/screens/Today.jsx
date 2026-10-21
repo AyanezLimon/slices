@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
-import { todayView, ruleMeta, participantsOf, returnFor, actions, ckey } from '../lib/house.js';
-import { relDate, longDate } from '../../supabase/functions/_shared/format.js';
+import { todayView, ruleMeta, participantsOf, returnFor, seatOf, actions, ckey } from '../lib/house.js';
+import { relDate, longDate, listJoin } from '../../supabase/functions/_shared/format.js';
 import { Avatar, Icon, Sheet, Gauge, InstallCard, attempt } from '../components/ui.jsx';
 
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit' });
@@ -16,7 +16,7 @@ export function Today({ h }) {
   const minePending = v.mine.length > mineDone;
   const houseText = v.duties.length === 0 ? 'Hoy no hay tareas' : doneCount === v.duties.length ? 'Casa al día' : `${doneCount} de ${v.duties.length} en la casa`;
 
-  const toggle = (d) => attempt(() => (d.completion ? actions.undoDone(d.chore.id, h.today) : actions.markDone(h, d.chore.id, h.today)));
+  const toggle = (d) => attempt(() => (d.completion ? actions.undoDone(d.completion) : actions.markDone(h, d)));
 
   const chipFor = (d) => {
     const o = d.override;
@@ -64,7 +64,7 @@ export function Today({ h }) {
                   </div>
                 </div>
                 <button class="btn btn-primario" type="button"
-                  onClick={() => attempt(() => actions.coverTask({ choreId: chore.id, date: r.date, covered: r.requester, returnDate: back, requestId: r.id }), `Cubres a ${name(r.requester)}`)}>
+                  onClick={() => attempt(() => actions.coverTask({ choreId: chore.id, date: r.date, slot: seatOf(h, chore, r.date, r.requester), covered: r.requester, returnDate: back, requestId: r.id }), `Cubres a ${name(r.requester)}`)}>
                   La cubro yo
                 </button>
               </div>
@@ -89,6 +89,7 @@ export function Today({ h }) {
                 <div class="grow stack-sm" style="padding-top:2px">
                   <span class={`tarea${d.completion ? ' strike' : ''}`}>{d.chore.name}</span>
                   <span class="meta">{d.completion ? `Hecha a las ${hhmm(d.completion.done_at)}` : (d.chore.description || ruleMeta(d.chore, h.today))}</span>
+                  {d.team.some((id) => id !== h.me.id) && <span class="meta">Con {listJoin([...new Set(d.team.filter((id) => id !== h.me.id))].map(name))}</span>}
                   {chip && !d.completion && <span class="chip chip-aviso" style="margin-top:4px">{chip}</span>}
                   {sent && <span class="chip chip-neutro" style="margin-top:4px">Pedido enviado{sent.target ? ` a ${name(sent.target)}` : ' a todos'}</span>}
                 </div>
@@ -120,14 +121,14 @@ export function Today({ h }) {
                   <div class="grow stack-sm">
                     <span class="tarea" style="font-size:15px">{d.chore.name}</span>
                     <span class="meta">
-                      {name(d.assignee)} · {d.completion ? `hecha${d.completion.done_by !== d.assignee ? ` por ${name(d.completion.done_by)}` : ''} a las ${hhmm(d.completion.done_at)}` : 'pendiente'}
+                      {name(d.assignee)}{d.team.length > 0 ? ' (en equipo)' : ''} · {d.completion ? `hecha${d.completion.done_by !== d.assignee ? ` por ${name(d.completion.done_by)}` : ''} a las ${hhmm(d.completion.done_at)}` : 'pendiente'}
                     </span>
                     {chip && <span class="chip chip-aviso">{chip}</span>}
                   </div>
                   {d.completion
                     ? <span style="color:var(--cascara)"><Icon name="check" size={24} label="Hecha" /></span>
                     : noAccount && h.isAdmin
-                      ? <button class="btn btn-secundario" style="padding:0 12px" type="button" onClick={() => attempt(() => actions.markDone(h, d.chore.id, h.today))}>Marcar</button>
+                      ? <button class="btn btn-secundario" style="padding:0 12px" type="button" onClick={() => attempt(() => actions.markDone(h, d))}>Marcar</button>
                       : <button class="btn btn-secundario" style="padding:0 12px" type="button" onClick={() => setConfirm({ duty: d, returnDate: returnFor(h, d.chore, h.today, h.me.id) })}>Yo la hice</button>}
                 </div>
               );
@@ -150,7 +151,7 @@ export function Today({ h }) {
           <button class="btn btn-primario" type="button" onClick={async () => {
             const d = confirm.duty;
             setConfirm(null);
-            await attempt(() => actions.coverTask({ choreId: d.chore.id, date: h.today, covered: d.assignee, returnDate: confirm.returnDate, markDone: true }), 'Listo, quedó registrado');
+            await attempt(() => actions.coverTask({ choreId: d.chore.id, date: h.today, slot: d.slot, covered: d.assignee, returnDate: confirm.returnDate, markDone: true }), 'Listo, quedó registrado');
           }}>Sí, la hice yo</button>
           <button class="btn btn-texto" type="button" onClick={() => setConfirm(null)}>Cancelar</button>
         </Sheet>

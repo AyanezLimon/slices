@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'preact/hooks';
 import { supabase, must } from './supabase.js';
 import {
-  todayIn, addDays, indexOverrides, dutiesOn, findReturnDate, ruleFor, weekdayOf
+  todayIn, addDays, indexOverrides, indexBySlot, lookupSlot, dutiesOn, findReturnDate, ruleFor, weekdayOf,
+  slotOf, peopleIn
 } from '../../supabase/functions/_shared/schedule.js';
 
 export const DEFAULT_COVER = { meCubren: true, mePiden: true, devolver: true, general: false, actualizaciones: true };
@@ -34,7 +35,7 @@ export function useHouse(session) {
       ]);
       const ms = must(members);
       const me = ms.find((m) => m.id === meId);
-      const done = new Map(must(completions).map((c) => [ckey(c.chore_id, c.date), c]));
+      const done = indexBySlot(must(completions));
       const ovList = must(overrides);
       setState({
         loading: false,
@@ -81,15 +82,18 @@ export function useHouse(session) {
 
 export function todayView(h) {
   const activeChores = h.chores.filter((c) => c.active);
-  const duties = dutiesOn(activeChores, h.today, h.ov).map((d) => ({ ...d, completion: h.done.get(ckey(d.chore.id, h.today)) || null }));
+  const duties = dutiesOn(activeChores, h.today, h.ov).map((d, i, all) => {
+    const first = all.findIndex((x) => x.chore.id === d.chore.id) === i;
+    const team = all.filter((x) => x.chore.id === d.chore.id && x !== d).map((x) => x.assignee);
+    return { ...d, team, completion: lookupSlot(h.done, d.chore.id, h.today, d.slot, first) };
+  });
   const mine = duties.filter((d) => d.assignee === h.me.id);
   const others = duties.filter((d) => d.assignee !== h.me.id);
   const forMe = h.requests.filter((r) => {
     if (r.requester === h.me.id) return false;
     if (r.target) return r.target === h.me.id;
     const c = h.chores.find((x) => x.id === r.chore_id);
-    const rule = c && ruleFor(c, r.date);
-    return !rule || (rule.participants || []).includes(h.me.id);
+    return !c || participantsOf(c, r.date).includes(h.me.id);
   });
   const mySent = new Map(h.requests.filter((r) => r.requester === h.me.id).map((r) => [ckey(r.chore_id, r.date), r]));
   return { duties, mine, others, forMe, mySent };
@@ -97,21 +101,22 @@ export function todayView(h) {
 
 export function participantsOf(chore, date) {
   const r = ruleFor(chore, date) || chore.rules?.[chore.rules.length - 1];
-  if (!r) return [];
-  const set = new Set(r.participants || []);
-  if (r.mode === 'weekly') for (const s of Object.values(r.slots || {})) if (s?.fixed) set.add(s.fixed);
-  return [...set];
+  return peopleIn(r);
 }
 
 export function ruleMeta(chore, date) {
   const r = ruleFor(chore, date);
   if (!r) return '';
   if (r.mode === 'weekly') {
-    const slot = r.slots?.[weekdayOf(date)];
-    return slot?.rotate ? 'Este día rota cada semana' : 'Tu día fijo';
+    return slotOf(r, weekdayOf(date)).rotate ? 'Este día rota cada semana' : 'Tu día fijo';
   }
   if (r.mode === 'every_n') return `Cada ${r.n} días`;
   return 'Rotativa diaria';
+}
+
+/** Puesto que ocupa `memberId` en una ocurrencia (para cubrirle). */
+export function seatOf(h, chore, date, memberId) {
+  return dutiesOn([chore], date, h.ov).find((d) => d.assignee === memberId)?.slot || null;
 }
 
 export function returnFor(h, chore, date, coverer) {
@@ -121,17 +126,19 @@ export function returnFor(h, chore, date, coverer) {
 // ───────────── Acciones ─────────────
 
 export const actions = {
-  markDone: async (h, choreId, date) =>
-    must(await supabase.from('completions').insert({ chore_id: choreId, date, done_by: h.me.id })),
-  undoDone: async (choreId, date) =>
-    must(await supabase.from('completions').delete().eq('chore_id', choreId).eq('date', date)),
+  markDone: async (h, duty) =>
+    must(await supabase.from('completions').insert({ chore_id: duty.chore.id, date: duty.date, slot_of: duty.slot, done_by: h.me.id })),
+  undoDone: async (completion) => {
+    const q = supabase.from('completions').delete().eq('chore_id', completion.chore_id).eq('date', completion.date);
+    return must(await (completion.slot_of ? q.eq('slot_of', completion.slot_of) : q.is('slot_of', null)));
+  },
   requestCover: async (choreId, date, target) =>
     must(await supabase.rpc('request_cover', { p_chore: choreId, p_date: date, p_target: target || null })),
   cancelRequest: async (id) => must(await supabase.rpc('cancel_cover_request', { p_id: id })),
-  coverTask: async ({ choreId, date, covered, returnDate, requestId, markDone }) =>
+  coverTask: async ({ choreId, date, slot, covered, returnDate, requestId, markDone }) =>
     must(await supabase.rpc('cover_task', {
       p_chore: choreId, p_date: date, p_covered: covered, p_return_date: returnDate || null,
-      p_request: requestId || null, p_mark_done: Boolean(markDone)
+      p_request: requestId || null, p_mark_done: Boolean(markDone), p_slot: slot || null
     })),
   savePrefs: async (h, patch) => {
     const before = h.prefs;

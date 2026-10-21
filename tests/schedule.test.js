@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  baseAssignee, assigneeOn, indexOverrides, findReturnDate, weekdayOf,
-  addDays, nowIn, dutiesOn, nextTurns
+  baseAssignee, baseAssignees, assigneeOn, assigneesOn, indexOverrides, findReturnDate, weekdayOf,
+  addDays, nowIn, dutiesOn, nextTurns, seatsOn, lookupSlot
 } from '../supabase/functions/_shared/schedule.js';
 
 const S = 'santiago', I = 'isis', V = 'victoria', A = 'aries';
@@ -131,5 +131,76 @@ describe('helpers de UI', () => {
   });
   it('nextTurns de Aries en trastes', () => {
     expect(nextTurns(trastes, '2026-10-19', A, indexOverrides(), 3)).toEqual(['2026-10-26', '2026-11-02', '2026-11-09']);
+  });
+});
+
+describe('rotación elegible en weekly', () => {
+  // Aries tiene el lunes fijo pero no entra al viernes rotativo.
+  const trastes2 = {
+    id: 'trastes2',
+    rules: [{ ...trastes.rules[0], rotation: [S, I, V] }]
+  };
+  it('el viernes rota solo entre quienes están en la rotación', () => {
+    expect(['2026-10-23', '2026-10-30', '2026-11-06', '2026-11-13'].map((d) => baseAssignee(trastes2, d)))
+      .toEqual([S, I, V, S]);
+  });
+  it('los días fijos no cambian', () => {
+    expect(baseAssignee(trastes2, '2026-10-19')).toBe(A);
+  });
+  it('sin rotation usa a todos los participantes (reglas viejas)', () => {
+    expect(baseAssignee(trastes, '2026-11-13')).toBe(A);
+  });
+});
+
+describe('varias personas en una misma tarea', () => {
+  const limpieza = {
+    id: 'limpieza',
+    rules: [{
+      effective_from: '2026-10-19', start_date: '2026-10-24', mode: 'weekly',
+      participants: [S, I, V, A], rotation: [S, I, V],
+      slots: { 6: { people: [A], rotate: true }, 7: { people: [S, I, V, A] } }
+    }]
+  };
+  it('sábado: Aries fija más una persona que rota', () => {
+    expect(baseAssignees(limpieza, '2026-10-24')).toEqual([A, S]);
+    expect(baseAssignees(limpieza, '2026-10-31')).toEqual([A, I]);
+  });
+  it('domingo: toda la casa', () => {
+    expect(baseAssignees(limpieza, '2026-10-25')).toEqual([S, I, V, A]);
+  });
+  it('dutiesOn da un elemento por persona', () => {
+    expect(dutiesOn([limpieza], '2026-10-24', indexOverrides()).map((d) => [d.slot, d.assignee])).toEqual([[A, A], [S, S]]);
+  });
+  it('personas por turno en rotativa diaria', () => {
+    const basura2 = { id: 'b2', rules: [{ ...basura.rules[0], per_turn: 2 }] };
+    expect(['2026-10-19', '2026-10-20', '2026-10-21'].map((d) => baseAssignees(basura2, d)))
+      .toEqual([[S, I], [V, A], [S, I]]);
+  });
+  it('si hay más personas por turno que en la rotación, entran todas una vez', () => {
+    const p3 = { id: 'p3', rules: [{ ...plantas.rules[0], per_turn: 5 }] };
+    expect(baseAssignees(p3, '2026-10-20')).toEqual([I, A]);
+  });
+  it('una cobertura cambia solo el puesto de quien no puede', () => {
+    const ov = indexOverrides([{ chore_id: 'limpieza', date: '2026-10-25', slot_of: I, assignee: A, covered_member: I, reason: 'cubre' }]);
+    expect(assigneesOn(limpieza, '2026-10-25', ov)).toEqual([S, A, V, A]);
+    expect(seatsOn(limpieza, '2026-10-25', ov)[1].override.reason).toBe('cubre');
+  });
+  it('override viejo sin puesto vale solo para el primero', () => {
+    const ov = indexOverrides([{ chore_id: 'limpieza', date: '2026-10-25', assignee: A, reason: 'cubre' }]);
+    expect(assigneesOn(limpieza, '2026-10-25', ov)).toEqual([A, I, V, A]);
+  });
+  it('la devolución busca el siguiente turno de quien cubre, aunque comparta el día', () => {
+    // Isis cubre a Victoria el sábado 24 (no es suyo): Victoria paga en el próximo turno de Isis
+    expect(findReturnDate(limpieza, '2026-10-24', I, indexOverrides())).toBe('2026-10-25');
+    const ov = indexOverrides([{ chore_id: 'limpieza', date: '2026-10-25', slot_of: I, assignee: V, reason: 'devuelve' }]);
+    expect(findReturnDate(limpieza, '2026-10-24', I, ov)).toBe('2026-10-31');
+  });
+  it('lookupSlot encuentra completadas por puesto', () => {
+    const done = indexOverrides([{ chore_id: 'limpieza', date: '2026-10-25', slot_of: V }]);
+    expect(lookupSlot(done, 'limpieza', '2026-10-25', V, false)).not.toBeNull();
+    expect(lookupSlot(done, 'limpieza', '2026-10-25', S, true)).toBeNull();
+  });
+  it('nextTurns cuenta días compartidos', () => {
+    expect(nextTurns(limpieza, '2026-10-23', A, indexOverrides(), 2)).toEqual(['2026-10-24', '2026-10-25']);
   });
 });
