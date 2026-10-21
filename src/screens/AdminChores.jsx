@@ -86,6 +86,8 @@ export function ChoreEditor({ h, id }) {
   // Quiénes rotan en los días "Rotativo" (en Por día puede ser solo una parte de los participantes).
   const [rot, setRot] = useState(() => (r ? rotationOf(r) : parts));
   const [perTurn, setPerTurn] = useState(r?.per_turn || 1);
+  // Día propio dentro de la rotación: a quien le toca la semana la hace solo ese día.
+  const [rotDays, setRotDays] = useState(r?.rotation_days || {});
   const [n, setN] = useState(r?.n || 3);
   const [days, setDays] = useState(r?.days || [1, 2, 3, 4, 5]);
   const [start, setStart] = useState(r?.start_date || h.today);
@@ -135,7 +137,11 @@ export function ChoreEditor({ h, id }) {
         const people = v.people.filter((x) => parts.includes(x));
         if (people.length || v.rotate) rule.slots[d] = { people, rotate: v.rotate };
       }
-      if (hasRot) rule.rotation = order;
+      if (hasRot) {
+        rule.rotation = order;
+        const own = Object.fromEntries(Object.entries(rotDays).filter(([id, d]) => order.includes(id) && slots[d]?.rotate));
+        if (Object.keys(own).length) rule.rotation_days = own;
+      }
     }
     if (mode === 'every_n') rule.n = Math.max(1, Number(n) || 1);
     if (mode === 'daily_rotation') rule.days = [...days].sort();
@@ -215,7 +221,7 @@ export function ChoreEditor({ h, id }) {
         {(mode !== 'weekly' || hasRot) && (
           <div class="stack" style="gap:8px">
             <span class="label">{mode === 'weekly' ? 'Quiénes rotan' : 'Orden de rotación'}</span>
-            {mode === 'weekly' && <span class="meta">Quita a quien tiene días fijos y no entra en el día rotativo.</span>}
+            {mode === 'weekly' && <span class="meta">Quita a quien tiene días fijos y no entra en el día rotativo. Si a alguien le toca siempre el mismo día, elígelo: su semana la hace solo ese día.</span>}
             {parts.length === 0 && <span class="meta">Marca al menos una persona arriba.</span>}
             {mode === 'weekly' && parts.some((pid) => !rot.includes(pid)) && (
               <div class="row-wrap">
@@ -227,13 +233,23 @@ export function ChoreEditor({ h, id }) {
               </div>
             )}
             {order.map((pid, i) => (
-              <div class="tenue row" style="padding:6px 8px 6px 12px">
-                <span class="meta" style="font-weight:800;width:18px">{i + 1}</span>
-                <Avatar member={h.byId.get(pid)} size={28} />
-                <span class="grow tarea" style="font-size:15px">{h.byId.get(pid)?.name}</span>
-                <button type="button" class="btn btn-texto" style="padding:0 8px" aria-label="Subir" onClick={() => move(i, -1)} disabled={i === 0}><Icon name="arriba" size={18} /></button>
-                <button type="button" class="btn btn-texto" style="padding:0 8px" aria-label="Bajar" onClick={() => move(i, 1)} disabled={i === order.length - 1}><Icon name="abajo" size={18} /></button>
-                {mode === 'weekly' && <button type="button" class="btn btn-texto" style="padding:0 8px" aria-label={`Sacar a ${h.byId.get(pid)?.name} de la rotación`} onClick={() => toggleRot(pid)}>Sacar</button>}
+              <div class="tenue stack-sm" style="padding:6px 8px 6px 12px">
+                <div class="row">
+                  <span class="meta" style="font-weight:800;width:18px">{i + 1}</span>
+                  <Avatar member={h.byId.get(pid)} size={28} />
+                  <span class="grow tarea" style="font-size:15px">{h.byId.get(pid)?.name}</span>
+                  <button type="button" class="btn btn-texto" style="padding:0 8px" aria-label="Subir" onClick={() => move(i, -1)} disabled={i === 0}><Icon name="arriba" size={18} /></button>
+                  <button type="button" class="btn btn-texto" style="padding:0 8px" aria-label="Bajar" onClick={() => move(i, 1)} disabled={i === order.length - 1}><Icon name="abajo" size={18} /></button>
+                  {mode === 'weekly' && <button type="button" class="btn btn-texto" style="padding:0 8px" aria-label={`Sacar a ${h.byId.get(pid)?.name} de la rotación`} onClick={() => toggleRot(pid)}>Sacar</button>}
+                </div>
+                {mode === 'weekly' && (
+                  <select class="input" style="min-height:40px;font-size:15px;margin-bottom:4px" aria-label={`Día de ${h.byId.get(pid)?.name}`}
+                    value={slots[rotDays[pid]]?.rotate ? String(rotDays[pid]) : ''}
+                    onChange={(e) => { const v = e.currentTarget.value; const next = { ...rotDays }; if (v) next[pid] = Number(v); else delete next[pid]; setRotDays(next); }}>
+                    <option value="">Cualquier día rotativo</option>
+                    {DAYS.map((d, k) => slots[k + 1]?.rotate && <option value={String(k + 1)}>Solo el {d.toLowerCase()}</option>)}
+                  </select>
+                )}
               </div>
             ))}
             <div class="row"><label for="pt" style="font-weight:600" class="grow">Personas por turno</label><input id="pt" type="number" min="1" max={Math.max(1, order.length)} class="input input-sm" style="width:80px;text-align:center" value={perTurn} onInput={(e) => setPerTurn(e.currentTarget.value)} /></div>
