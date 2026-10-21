@@ -16,7 +16,7 @@ PWA familiar para repartir quehaceres (familia Limón: Santiago, Isis, Victoria,
 - **`supabase/functions/_shared/schedule.js`.** Es la única fuente de verdad de la rotación. Lo usan la PWA y la función.
   - Las reglas están versionadas por `effective_from`. Al editar una tarea se agrega una regla nueva; nunca se sobrescribe una anterior.
   - Corre `npm test` después de cualquier cambio a este archivo.
-  - Una ocurrencia puede tener varias personas ("puestos"). En `weekly` cada día es `{people: [...], rotate}` (la forma vieja `{fixed}`/`{rotate}` sigue valiendo), `rotation` dice quiénes entran al día rotativo y `per_turn` cuántas personas por turno.
+  - Una ocurrencia puede tener varias personas ("puestos"). En `weekly` cada día es `{people: [...], rotate}` (la forma vieja `{fixed}`/`{rotate}` sigue valiendo), `rotation` dice quiénes entran al día rotativo, `rotation_days` el día propio de alguien de la rotación (semanas de lunes a domingo) y `per_turn` cuántas personas por turno.
   - `overrides` y `completions` van por puesto con `slot_of` (id de quien tiene el puesto por regla). Las filas viejas sin `slot_of` valen para el primer puesto del día.
 - **Cobertura.** Si A no puede y B cubre la fecha *d*, A paga en el siguiente turno base de B en esa misma tarea.
   - Lo resuelve `findReturnDate`.

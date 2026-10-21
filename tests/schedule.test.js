@@ -204,3 +204,30 @@ describe('varias personas en una misma tarea', () => {
     expect(nextTurns(limpieza, '2026-10-23', A, indexOverrides(), 2)).toEqual(['2026-10-24', '2026-10-25']);
   });
 });
+
+describe('rotativa con día propio', () => {
+  // Una semana Isis el sábado, la siguiente Aries el domingo.
+  const banos = {
+    id: 'banos',
+    rules: [{
+      effective_from: '2026-10-19', start_date: '2026-10-21', mode: 'weekly',
+      participants: [I, A], rotation: [I, A], rotation_days: { [I]: 6, [A]: 7 },
+      slots: { 6: { people: [], rotate: true }, 7: { people: [], rotate: true } }
+    }]
+  };
+  it('alterna semanas y cada quien en su día', () => {
+    const days = ['2026-10-24', '2026-10-25', '2026-10-31', '2026-11-01', '2026-11-07', '2026-11-08'];
+    expect(days.map((d) => baseAssignee(banos, d))).toEqual([I, null, null, A, I, null]);
+  });
+  it('la semana empieza el lunes aunque el inicio sea otro día', () => {
+    // inicio miércoles 21: el sábado 24 y el domingo 25 son la misma semana (la de Isis)
+    expect(baseAssignee(banos, '2026-10-25')).toBeNull();
+  });
+  it('la devolución cae en el día propio de quien cubre', () => {
+    expect(findReturnDate(banos, '2026-10-24', A, indexOverrides())).toBe('2026-11-01');
+  });
+  it('sin día propio sigue igual', () => {
+    const libre = { id: 'l', rules: [{ ...banos.rules[0], rotation_days: { [I]: 6 } }] };
+    expect(['2026-10-31', '2026-11-01'].map((d) => baseAssignee(libre, d))).toEqual([A, A]);
+  });
+});

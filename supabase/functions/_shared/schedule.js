@@ -12,6 +12,7 @@
 //       mode: 'weekly' | 'every_n' | 'daily_rotation',
 //       participants: [memberId, ...],     // quienes participan (en every_n y daily_rotation, orden de rotación)
 //       rotation: [memberId, ...],         // weekly: quienes rotan y en qué orden (opcional, default participants)
+//       rotation_days: { memberId: 6 },    // weekly: día propio de alguien de la rotación (opcional)
 //       per_turn: 1,                       // cuántas personas por turno rotativo (opcional, default 1)
 //       slots: { 1: {people: [id, ...], rotate: bool}, ..., 7: ... }, // weekly (1=lun ... 7=dom)
 //                                          // forma vieja, aún válida: {fixed: id} | {rotate: true}
@@ -130,8 +131,14 @@ export function baseAssignees(chore, date) {
 
   switch (r.mode) {
     case 'weekly': {
-      const slot = slotOf(r, weekdayOf(d));
-      const rotating = slot.rotate ? pickTurn(rot, Math.floor((d - s) / 7), r.per_turn) : [];
+      const wd = weekdayOf(d);
+      const slot = slotOf(r, wd);
+      if (!slot.rotate) return uniq(slot.people);
+      // Con rotation_days, a quien le toca la semana la hace solo en su día; las
+      // semanas van de lunes a domingo para que sábado y domingo caigan en la misma.
+      const own = r.rotation_days;
+      const week = own ? Math.floor((d - (s - (weekdayOf(s) - 1))) / 7) : Math.floor((d - s) / 7);
+      const rotating = pickTurn(rot, week, r.per_turn).filter((id) => !own || !own[id] || own[id] === wd);
       return uniq([...slot.people, ...rotating]);
     }
     case 'every_n': {
