@@ -28,14 +28,14 @@ function summary(h, chore) {
 
 export function AdminChores({ h }) {
   return (
-    <main class="screen with-nav">
+    <main class="screen with-nav ancha">
       <header class="row">
         <h1 class="display grow">Administrar</h1>
         <a class="btn btn-primario" href="#/admin/tarea/nueva"><Icon name="mas" size={18} />Nueva tarea</a>
       </header>
       <AdminTabs active="tareas" />
       {h.chores.length === 0 && <div class="card"><p class="muted">Todavía no hay tareas. Crea la primera con "Nueva tarea".</p></div>}
-      <div class="stack" style="gap:10px">
+      <div class="stack lista-tareas" style="gap:10px">
         {h.chores.map((c) => {
           const r = latestRule(c, h.today);
           return (

@@ -9,9 +9,13 @@ La app de quehaceres de la casa Limón: **lo que me toca hoy**, coberturas con d
 
 ## Publicar una versión nueva
 
-1. Haz tus cambios en `main`. CI corre los tests y el build.
-2. En GitHub: **Releases → Draft a new release**, crea un tag `vX.Y.Z` y escribe las notas. La primera línea de las notas es el texto del aviso.
-3. Al publicarlo, el workflow **Release**:
+1. Haz tus cambios en un PR. CI corre los tests y el build.
+2. Al mergearlo a `main`, el workflow **Auto release** crea solo el release `vX.Y.Z`. La descripción del PR puede traer dos líneas opcionales:
+   - `Aviso: <texto>`: la primera línea de las notas y el texto del aviso a la casa. Si falta, se usa el título del PR.
+   - `Versión: mayor | menor | parche | ninguna`: cuánto sube la versión. Si falta, sube el parche; con `ninguna` no se publica nada.
+
+   También puedes publicar a mano como antes (**Releases → Draft a new release**); la primera línea de las notas es el aviso.
+3. Al publicarse, el workflow **Release**:
    - prueba y construye la app con esa versión;
    - aplica las migraciones y despliega la Edge Function en Supabase;
    - publica en GitHub Pages;

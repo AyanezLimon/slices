@@ -11,6 +11,10 @@ on:
       version:
         description: "Versión a publicar (ej. v1.0.1)"
         required: true
+      avisar:
+        description: "Avisar a la casa con las notas del release"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -94,7 +98,7 @@ jobs:
 
   notify:
     needs: deploy
-    if: github.event_name == 'release' && vars.SUPABASE_URL != ''
+    if: (github.event_name == 'release' || inputs.avisar) && vars.SUPABASE_URL != ''
     runs-on: ubuntu-latest
     steps:
       - name: Esperar a que Pages sirva la versión nueva
@@ -108,7 +112,9 @@ jobs:
       - name: Avisar a la casa
         env:
           NOTES: ${{ github.event.release.body }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          [ -n "$NOTES" ] || NOTES=$(gh release view "$VERSION" --repo "${{ github.repository }}" --json body --jq .body)
           body=$(jq -n --arg v "$VERSION" --arg n "$NOTES" '{run:"release",version:$v,notes:$n}')
           curl -fsS -X POST "${{ vars.SUPABASE_URL }}/functions/v1/notify" \
             -H "Content-Type: application/json" \
