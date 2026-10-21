@@ -146,6 +146,60 @@ textarea.input { padding: 12px 14px; resize: none; }
 .week div { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--tinta-suave); }
 .week span { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
 
+.nav-marca, .nav-yo, .nav.nav-solo-ancha { display: none; }
+.hoja-acciones { display: flex; flex-direction: column; gap: 8px; }
+
+/* Hoy en el celular: una sola columna; las dos columnas de escritorio se deshacen. */
+.hoy-principal, .hoy-lado { display: contents; }
+.hoy-principal > * { order: 2; }
+.hoy-principal > [role="note"] { margin-top: -12px; }
+.hoy-medidor { order: 1; margin-top: -12px; flex-direction: row; align-items: center; gap: 16px; padding: 12px 16px; }
+.hoy-resto { order: 3; }
+
+/* ───────────── Pantalla ancha (PC) ───────────── */
+@media (min-width: 1024px) {
+  .app { padding-left: 248px; }
+  .solo-celular { display: none; }
+
+  .nav, .nav.nav-solo-ancha {
+    top: 0; right: auto; width: 248px; padding: 28px 16px;
+    border-top: none; border-right: 1px solid var(--linea);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .nav-marca { display: flex; align-items: center; gap: 12px; padding: 0 8px 24px; font-family: var(--font-display); font-weight: 600; font-size: 26px; letter-spacing: -0.02em; color: var(--tinta); }
+  .nav a { min-height: 44px; flex-direction: row; justify-content: flex-start; gap: 12px; padding: 0 12px; border-radius: var(--r-md); font-size: 15px; }
+  .nav a:hover { background: var(--superficie-tenue); }
+  .nav a[aria-current="page"] { background: var(--superficie-tenue); }
+  .nav a.nav-yo { display: flex; margin-top: auto; min-height: 64px; padding: 12px 8px 0; border-top: 1px solid var(--linea); border-radius: 0; color: var(--tinta); }
+  .nav a.nav-yo:hover { background: none; }
+
+  .screen, .screen.with-nav { max-width: 768px; padding: 40px 48px 48px; gap: 28px; }
+  .screen.ancha { max-width: 1216px; }
+  .display { font-size: 40px; line-height: 44px; }
+
+  .hoy { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: 28px 32px; align-content: start; }
+  .hoy > header { grid-column: 1 / -1; }
+  .hoy-principal, .hoy-lado { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+  .hoy-principal > [role="note"], .hoy-medidor { margin-top: 0; }
+  .hoy-medidor { flex-direction: column; text-align: center; padding: 24px; gap: 12px; }
+  .hoy-medidor svg { width: 240px; height: auto; }
+  .hoy-medidor .stack-sm { align-items: center; }
+
+  .tarjeta-fila { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 20px; }
+  .tarjeta-fila > .row { flex: 1 1 260px; }
+  .tarjeta-fila > .btn-row > .btn { flex: none; padding: 0 22px; }
+
+  .lista-tareas { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px !important; }
+
+  .sheet-backdrop { justify-content: center; align-items: center; padding: 24px; }
+  .sheet { max-width: 480px; max-height: 85dvh; border-radius: var(--r-xl); padding: 28px; box-shadow: 0 12px 40px rgba(16, 36, 28, 0.22); }
+  .sheet .grip { display: none; }
+  .hoja-acciones { flex-direction: row-reverse; flex-wrap: wrap; justify-content: flex-start; }
+
+  .toast { left: calc(50% + 124px); bottom: 32px; }
+  .update { left: 272px; right: 24px; }
+}
+
 .center { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 32px max(24px, env(safe-area-inset-right, 0px)) 32px max(24px, env(safe-area-inset-left, 0px)); text-align: center; }
 .logo { font-family: var(--font-display); font-weight: 600; font-size: 56px; line-height: 1; letter-spacing: -0.02em; color: var(--tinta); }
 .spinner { width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--linea); border-top-color: var(--primario); animation: spin 0.8s linear infinite; }

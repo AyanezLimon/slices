@@ -27,26 +27,18 @@ export function Today({ h }) {
   };
 
   return (
-    <main class="screen with-nav">
-      <header class="stack">
-        <div class="row">
-          <div class="grow stack-sm">
-            <span class="eyebrow">{longDate(h.today)}</span>
-            <h1 class="display">Hola, {h.me.name}</h1>
-          </div>
-          <a href="#/perfil" aria-label="Perfil"><Avatar member={h.me} size={44} /></a>
+    <main class="screen with-nav ancha hoy">
+      <header class="row">
+        <div class="grow stack-sm">
+          <span class="eyebrow">{longDate(h.today)}</span>
+          <h1 class="display">Hola, {h.me.name}</h1>
         </div>
-        <div class="card" style="flex-direction:row;align-items:center;gap:16px;padding:12px 16px">
-          <Gauge total={Math.max(1, v.duties.length)} doneCount={v.duties.length ? doneCount : 1} mineFirst={minePending}
-            label={`${doneCount} de ${v.duties.length} tareas de la casa hechas`} />
-          <div class="stack-sm">
-            <span style="font-size:18px;font-weight:800">{houseText}</span>
-            {v.mine.length > 0 && <span class="meta">{mineDone} de {v.mine.length} tuyas hechas</span>}
-          </div>
-        </div>
-        <InstallCard />
+        <a class="solo-celular" href="#/perfil" aria-label="Perfil"><Avatar member={h.me} size={44} /></a>
       </header>
 
+      {/* En el celular las dos columnas se deshacen (display: contents) y el orden lo da `order`. */}
+      <div class="hoy-principal">
+      <InstallCard />
       {v.forMe.length > 0 && (
         <section class="stack">
           <h2 class="seccion">Te piden ayuda</h2>
@@ -55,7 +47,7 @@ export function Today({ h }) {
             if (!chore) return null;
             const back = returnFor(h, chore, r.date, h.me.id);
             return (
-              <div class="card">
+              <div class="card tarjeta-fila">
                 <div class="row">
                   <Avatar member={h.byId.get(r.requester)} size={40} />
                   <div class="grow stack-sm">
@@ -80,7 +72,7 @@ export function Today({ h }) {
           const sent = v.mySent.get(ckey(d.chore.id, h.today));
           const chip = chipFor(d);
           return (
-            <div class="card">
+            <div class="card tarjeta-fila">
               <div class="row" style="align-items:flex-start">
                 <button type="button" class={`check${d.completion ? ' on' : ''}`} onClick={() => toggle(d)}
                   aria-label={d.completion ? `Desmarcar ${d.chore.name}` : `Marcar ${d.chore.name} como hecha`}>
@@ -107,8 +99,20 @@ export function Today({ h }) {
         })}
       </section>
 
+      </div>
+
+      <div class="hoy-lado">
+        <div class="card hoy-medidor">
+          <Gauge total={Math.max(1, v.duties.length)} doneCount={v.duties.length ? doneCount : 1} mineFirst={minePending}
+            label={`${doneCount} de ${v.duties.length} tareas de la casa hechas`} />
+          <div class="stack-sm">
+            <span style="font-size:18px;font-weight:800">{houseText}</span>
+            {v.mine.length > 0 && <span class="meta">{mineDone} de {v.mine.length} tuyas hechas</span>}
+          </div>
+        </div>
+
       {v.others.length > 0 && (
-        <section class="stack">
+        <section class="stack hoy-resto">
           <h2 class="seccion">Resto de la casa</h2>
           <div class="card list">
             {v.others.map((d) => {
@@ -137,6 +141,8 @@ export function Today({ h }) {
         </section>
       )}
 
+      </div>
+
       {coverFor && <CoverSheet h={h} duty={coverFor} onClose={() => setCoverFor(null)} />}
 
       {confirm && (
@@ -148,12 +154,14 @@ export function Today({ h }) {
               {confirm.returnDate ? ` A cambio, ${name(confirm.duty.assignee)} hace tu turno ${relDate(confirm.returnDate, h.today)}.` : ' No tienes turnos próximos en esta tarea, así que no hay devolución.'}
             </p>
           </div>
+          <div class="hoja-acciones">
           <button class="btn btn-primario" type="button" onClick={async () => {
             const d = confirm.duty;
             setConfirm(null);
             await attempt(() => actions.coverTask({ choreId: d.chore.id, date: h.today, slot: d.slot, covered: d.assignee, returnDate: confirm.returnDate, markDone: true }), 'Listo, quedó registrado');
           }}>Sí, la hice yo</button>
           <button class="btn btn-texto" type="button" onClick={() => setConfirm(null)}>Cancelar</button>
+          </div>
         </Sheet>
       )}
     </main>
@@ -194,7 +202,7 @@ function CoverSheet({ h, duty, onClose }) {
           <p style="font-size:14px">{sel.next ? `Si ${sel.m.name} te cubre hoy, tú haces su turno ${relDate(sel.next, h.today)}.` : `${sel.m.name} no tiene turnos próximos; no habría devolución.`}</p>
         </div>
       )}
-      <div class="stack" style="gap:8px">
+      <div class="stack hoja-acciones" style="gap:8px">
         {sel && <button class="btn btn-primario" type="button" onClick={() => send(sel.id)}>Enviar pedido a {sel.m.name}</button>}
         {people.length > 1 && <button class="btn btn-secundario" type="button" onClick={() => send(null)}>Pedir a cualquiera</button>}
         <button class="btn btn-texto" type="button" onClick={onClose}>Cancelar</button>

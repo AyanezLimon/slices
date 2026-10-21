@@ -1,0 +1,66 @@
+name: Auto release
+
+# Cada merge a main publica una versión nueva sin tocar nada a mano.
+# El PR decide con dos líneas opcionales en su descripción:
+#   Aviso: <texto del aviso a la casa>     (si falta, se usa el título del PR)
+#   Versión: mayor | menor | parche | ninguna   (si falta, parche)
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Leer el PR del merge
+        id: pr
+        run: |
+          pr=$(gh api "repos/$REPO/commits/$GITHUB_SHA/pulls" --jq '.[0] // empty')
+          if [ -n "$pr" ]; then
+            title=$(jq -r .title <<<"$pr")
+            body=$(jq -r '.body // ""' <<<"$pr" | tr -d '\r')
+          else
+            title=$(gh api "repos/$REPO/commits/$GITHUB_SHA" --jq '.commit.message' | head -n1)
+            body=""
+          fi
+          aviso=$(grep -m1 -iE '^aviso:' <<<"$body" | sed -E 's/^[Aa]viso:[[:space:]]*//' || true)
+          nivel=$(grep -m1 -iE '^versi[oó]n:' <<<"$body" | sed -E 's/^[^:]*:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]' || true)
+          echo "aviso=${aviso:-$title}" >> "$GITHUB_OUTPUT"
+          echo "nivel=${nivel:-parche}" >> "$GITHUB_OUTPUT"
+
+      - name: Calcular la versión
+        id: v
+        if: steps.pr.outputs.nivel != 'ninguna'
+        env:
+          NIVEL: ${{ steps.pr.outputs.nivel }}
+        run: |
+          last=$(gh release view --repo "$REPO" --json tagName --jq .tagName 2>/dev/null || echo v0.0.0)
+          IFS=. read -r ma mi pa <<<"${last#v}"
+          case "$NIVEL" in
+            mayor) ma=$((ma + 1)); mi=0; pa=0 ;;
+            menor) mi=$((mi + 1)); pa=0 ;;
+            *) pa=$((pa + 1)) ;;
+          esac
+          echo "tag=v$ma.$mi.$pa" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar el release
+        if: steps.pr.outputs.nivel != 'ninguna'
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          AVISO: ${{ steps.pr.outputs.aviso }}
+        run: |
+          gh release create "$TAG" --repo "$REPO" --target "$GITHUB_SHA" --title "$TAG" --notes "$AVISO" --generate-notes
+          # Un release creado con el token de Actions no dispara "release: published", así que se lanza a mano.
+          gh workflow run release.yml --repo "$REPO" --ref "$TAG" -f version="$TAG" -f avisar=true

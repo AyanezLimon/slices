@@ -31,12 +31,13 @@ PWA familiar para repartir quehaceres (familia Limón: Santiago, Isis, Victoria,
   - Navegación network-first.
   - Cada push siempre muestra una notificación; en iOS es obligatorio.
   - Acuse de recibo vía `rpc/push_ack`.
+- **Pantalla ancha.** Desde 1024 px la barra de abajo pasa a barra lateral, Hoy va en dos columnas, Administrar en cuadrícula y las hojas inferiores son diálogos centrados. Todo está en el bloque `@media (min-width: 1024px)` de `src/styles.css`; en el celular las columnas de Hoy usan `display: contents` y `order`.
 - **`src/lib/updates.js`.** Compara `version.json` con `__APP_VERSION__`.
   - Si la persona no ha tocado nada, recarga en silencio.
   - Si no, muestra un banner y aplica la actualización al volver a la app.
 
 ## Publicar
-Un release `vX.Y.Z` en GitHub dispara `.github/workflows/release.yml`: tests y build, migraciones y función en Supabase, deploy a Pages y aviso a la casa. Las variables y secretos necesarios están en el README.
+Cada merge a `main` corre `.github/workflows/auto-release.yml`: crea el release `vX.Y.Z` y lanza `.github/workflows/release.yml` (tests y build, migraciones y función en Supabase, deploy a Pages y aviso a la casa). En la descripción de cada PR pon `Aviso: <texto>` (primera línea de las notas y texto del push; si falta, el título del PR) y `Versión: mayor | menor | parche | ninguna` (si falta, parche). Un release publicado a mano sigue funcionando igual. Las variables y secretos necesarios están en el README.
 
 ## Estado y siguiente paso: puesta en marcha
 El código está completo: compila y los 18 tests pasan. Todavía **no hay nada configurado**: Supabase, Pages, variables y secretos del repo están pendientes. Orden sugerido:

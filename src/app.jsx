@@ -4,7 +4,7 @@ import { useHouse } from './lib/house.js';
 import { applyTheme } from './lib/theme.js';
 import { syncSubscription } from './lib/push.js';
 import { onUpdate, applyUpdate } from './lib/updates.js';
-import { Icon, Toaster } from './components/ui.jsx';
+import { Icon, Toaster, Avatar, AppMark } from './components/ui.jsx';
 import { Login, Onboarding, Setup } from './screens/Entry.jsx';
 import { Today } from './screens/Today.jsx';
 import { Profile, AvatarPicker } from './screens/Profile.jsx';
@@ -48,14 +48,20 @@ function UpdateBanner() {
   );
 }
 
-function Nav({ route, isAdmin }) {
+// En el celular es la barra de abajo; en una pantalla ancha, la barra lateral (ver styles.css).
+function Nav({ route, isAdmin, me, hidden }) {
   const tab = route[0];
   const items = [['hoy', 'Hoy', 'sol'], ...(isAdmin ? [['admin', 'Admin', 'ajustes']] : []), ['perfil', 'Perfil', 'persona']];
   return (
-    <nav class="nav" aria-label="Secciones">
+    <nav class={`nav${hidden ? ' nav-solo-ancha' : ''}`} aria-label="Secciones">
+      <div class="nav-marca" aria-hidden="true"><AppMark size={40} /><span>Slices</span></div>
       {items.map(([id, label, icon]) => (
         <a href={`#/${id}`} aria-current={tab === id ? 'page' : undefined}><Icon name={icon} />{label}</a>
       ))}
+      <a class="nav-yo" href="#/perfil" aria-label={`Perfil de ${me.name}`}>
+        <Avatar member={me} size={40} />
+        <span class="stack-sm"><span class="tarea" style="font-size:15px">{me.name}</span></span>
+      </a>
     </nav>
   );
 }
@@ -108,7 +114,7 @@ export function App() {
     <div class="app">
       <UpdateBanner />
       {screen}
-      {showNav && <Nav route={route} isAdmin={h.isAdmin} />}
+      <Nav route={route} isAdmin={h.isAdmin} me={h.me} hidden={!showNav} />
       <Toaster />
     </div>
   );
