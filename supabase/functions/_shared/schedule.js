@@ -162,7 +162,7 @@ export function baseAssignee(chore, date) {
   return baseAssignees(chore, date)[0] ?? null;
 }
 
-const key = (choreId, date, slot) => `${choreId}|${date}|${slot || ''}`;
+export const key = (choreId, date, slot) => `${choreId}|${date}|${slot || ''}`;
 
 /**
  * Índice por (tarea, fecha, puesto) para overrides y completadas.

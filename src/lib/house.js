@@ -2,16 +2,28 @@ import { useEffect, useState, useCallback, useRef } from 'preact/hooks';
 import { supabase, must } from './supabase.js';
 import {
   todayIn, addDays, indexOverrides, indexBySlot, lookupSlot, dutiesOn, findReturnDate, ruleFor, weekdayOf,
-  slotOf, peopleIn
+  slotOf, peopleIn, key as slotKey
 } from '../../supabase/functions/_shared/schedule.js';
 
 export const DEFAULT_COVER = { meCubren: true, mePiden: true, devolver: true, general: false, actualizaciones: true };
 export const ckey = (choreId, date) => `${choreId}|${date}`;
+/** Llave de la fila de `completions` que corresponde a un deber o a una fila existente. */
+export const doneKey = (d) => (d.completion ? slotKey(d.completion.chore_id, d.completion.date, d.completion.slot_of) : slotKey(d.chore.id, d.date, d.slot));
+
+const withRow = (map, k, row) => {
+  const m = new Map(map);
+  if (row) m.set(k, row); else m.delete(k);
+  return m;
+};
 
 /** Todo el estado de la casa, con recarga en tiempo real. */
 export function useHouse(session) {
   const [state, setState] = useState({ loading: true });
   const timer = useRef(null);
+  // Marcas en vuelo: llave → fila (o null si se está quitando). Se aplican encima de cada recarga.
+  const pending = useRef(new Map());
+  const current = useRef(state);
+  current.current = state;
 
   const load = useCallback(async () => {
     if (!session) return;
@@ -36,6 +48,7 @@ export function useHouse(session) {
       const ms = must(members);
       const me = ms.find((m) => m.id === meId);
       const done = indexBySlot(must(completions));
+      for (const [k, row] of pending.current) { if (row) done.set(k, row); else done.delete(k); }
       const ovList = must(overrides);
       setState({
         loading: false,
@@ -75,7 +88,25 @@ export function useHouse(session) {
   // Refleja al instante un cambio de preferencias (no llega por Realtime).
   const patchPrefs = useCallback((patch) => setState((s) => ({ ...s, prefs: { ...s.prefs, ...patch } })), []);
 
-  return { ...state, reload: load, patchPrefs };
+  /** Aplica una marca al instante y la confirma en segundo plano; si falla, la revierte. Ignora toques repetidos. */
+  const optimistic = useCallback(async (k, row, fn) => {
+    if (pending.current.has(k)) return;
+    const prev = current.current.done?.get(k);
+    pending.current.set(k, row);
+    setState((s) => ({ ...s, done: withRow(s.done, k, row) }));
+    try {
+      await fn();
+    } catch (e) {
+      setState((s) => ({ ...s, done: withRow(s.done, k, prev) }));
+      throw e;
+    } finally {
+      pending.current.delete(k);
+      load();
+    }
+  }, [load]);
+  const busy = useCallback((k) => pending.current.has(k), []);
+
+  return { ...state, reload: load, patchPrefs, optimistic, busy };
 }
 
 // ───────────── Derivados ─────────────
@@ -126,12 +157,18 @@ export function returnFor(h, chore, date, coverer) {
 // ───────────── Acciones ─────────────
 
 export const actions = {
-  markDone: async (h, duty) =>
-    must(await supabase.from('completions').insert({ chore_id: duty.chore.id, date: duty.date, slot_of: duty.slot, done_by: h.me.id })),
-  undoDone: async (completion) => {
-    const q = supabase.from('completions').delete().eq('chore_id', completion.chore_id).eq('date', completion.date);
-    return must(await (completion.slot_of ? q.eq('slot_of', completion.slot_of) : q.is('slot_of', null)));
+  markDone: (h, duty) => {
+    const row = { chore_id: duty.chore.id, date: duty.date, slot_of: duty.slot, done_by: h.me.id };
+    return h.optimistic(slotKey(row.chore_id, row.date, row.slot_of), { ...row, done_at: new Date().toISOString() }, async () => {
+      const { error } = await supabase.from('completions').insert(row);
+      // 23505: alguien más ya la había marcado; el resultado es el mismo.
+      if (error && error.code !== '23505') throw new Error(error.message || 'Algo salió mal');
+    });
   },
+  undoDone: (h, completion) => h.optimistic(slotKey(completion.chore_id, completion.date, completion.slot_of), null, async () => {
+    const q = supabase.from('completions').delete().eq('chore_id', completion.chore_id).eq('date', completion.date);
+    must(await (completion.slot_of ? q.eq('slot_of', completion.slot_of) : q.is('slot_of', null)));
+  }),
   requestCover: async (choreId, date, target) =>
     must(await supabase.rpc('request_cover', { p_chore: choreId, p_date: date, p_target: target || null })),
   cancelRequest: async (id) => must(await supabase.rpc('cancel_cover_request', { p_id: id })),

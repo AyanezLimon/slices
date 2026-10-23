@@ -1,5 +1,5 @@
 import { useInstall } from '../lib/install.js';
-import { useEffect, useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 
 // ───────────── Íconos de trazo (24px, stroke 2) ─────────────
 const PATHS = {
@@ -120,6 +120,30 @@ export async function attempt(fn, ok) {
     return undefined;
   }
 }
+
+/**
+ * Para botones que esperan al servidor: `run(id, fn, ok)` corre `attempt` una sola vez a la vez
+ * y `busy` dice cuál está en curso, para deshabilitarlo y mostrar que se está guardando.
+ */
+export function useBusy() {
+  const [busy, setBusy] = useState(null);
+  const lock = useRef(false);
+  const run = async (id, fn, ok) => {
+    if (lock.current) return undefined;
+    lock.current = true;
+    setBusy(id);
+    try {
+      return await attempt(fn, ok);
+    } finally {
+      lock.current = false;
+      setBusy(null);
+    }
+  };
+  return [busy, run];
+}
+
+/** Texto de un botón, con un spinner chico mientras su acción está en curso. */
+export const BusyLabel = ({ on, children }) => (on ? <><span class="spinner spinner-sm" aria-hidden="true" />Guardando…</> : children);
 
 // ───────────── Medidor (media rodaja) ─────────────
 function wedge(i, n, lift) {
