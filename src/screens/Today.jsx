@@ -1,7 +1,7 @@
 import { useState } from 'preact/hooks';
-import { todayView, ruleMeta, participantsOf, returnFor, seatOf, actions, ckey } from '../lib/house.js';
+import { todayView, ruleMeta, participantsOf, returnFor, seatOf, actions, ckey, doneKey } from '../lib/house.js';
 import { relDate, longDate, listJoin } from '../../supabase/functions/_shared/format.js';
-import { Avatar, Icon, Sheet, Gauge, InstallCard, attempt } from '../components/ui.jsx';
+import { Avatar, Icon, Sheet, Gauge, InstallCard, attempt, useBusy, BusyLabel } from '../components/ui.jsx';
 
 const hhmm = (ts) => new Date(ts).toLocaleTimeString('es-CR', { hour: 'numeric', minute: '2-digit' });
 
@@ -9,6 +9,7 @@ export function Today({ h }) {
   const v = todayView(h);
   const [coverFor, setCoverFor] = useState(null); // duty para "No puedo"
   const [confirm, setConfirm] = useState(null);   // {duty, returnDate} para "Yo la hice"
+  const [busy, run] = useBusy(); // acciones que esperan al servidor (cubrir, cancelar)
   const name = (id) => h.byId.get(id)?.name || 'Alguien';
 
   const doneCount = v.duties.filter((d) => d.completion).length;
@@ -16,7 +17,10 @@ export function Today({ h }) {
   const minePending = v.mine.length > mineDone;
   const houseText = v.duties.length === 0 ? 'Hoy no hay tareas' : doneCount === v.duties.length ? 'Casa al día' : `${doneCount} de ${v.duties.length} en la casa`;
 
-  const toggle = (d) => attempt(() => (d.completion ? actions.undoDone(d.completion) : actions.markDone(h, d)));
+  // Marcar y desmarcar se ven al instante; el servidor confirma por detrás (ver `optimistic`).
+  const toggle = (d) => attempt(() => (d.completion ? actions.undoDone(h, d.completion) : actions.markDone(h, d)));
+  // Primero refresca y luego suelta el botón, para que no quede un hueco sin cambios en pantalla.
+  const save = (id, fn, ok) => run(id, async () => { await fn(); await h.reload(); }, ok);
 
   const chipFor = (d) => {
     const o = d.override;
@@ -55,9 +59,9 @@ export function Today({ h }) {
                     <span class="meta">{relDate(r.date, h.today)}{back ? ` · te devuelve ${relDate(back, h.today)}` : ''}</span>
                   </div>
                 </div>
-                <button class="btn btn-primario" type="button"
-                  onClick={() => attempt(() => actions.coverTask({ choreId: chore.id, date: r.date, slot: seatOf(h, chore, r.date, r.requester), covered: r.requester, returnDate: back, requestId: r.id }), `Cubres a ${name(r.requester)}`)}>
-                  La cubro yo
+                <button class="btn btn-primario" type="button" disabled={busy === r.id}
+                  onClick={() => save(r.id, () => actions.coverTask({ choreId: chore.id, date: r.date, slot: seatOf(h, chore, r.date, r.requester), covered: r.requester, returnDate: back, requestId: r.id }), `Cubres a ${name(r.requester)}`)}>
+                  <BusyLabel on={busy === r.id}>La cubro yo</BusyLabel>
                 </button>
               </div>
             );
@@ -71,16 +75,18 @@ export function Today({ h }) {
         {v.mine.map((d) => {
           const sent = v.mySent.get(ckey(d.chore.id, h.today));
           const chip = chipFor(d);
+          const saving = h.busy(doneKey(d));
           return (
             <div class="card tarjeta-fila">
               <div class="row" style="align-items:flex-start">
-                <button type="button" class={`check${d.completion ? ' on' : ''}`} onClick={() => toggle(d)}
+                <button type="button" class={`check${d.completion ? ' on' : ''}${saving ? ' guardando' : ''}`} onClick={() => toggle(d)}
+                  disabled={saving} aria-busy={saving ? 'true' : undefined}
                   aria-label={d.completion ? `Desmarcar ${d.chore.name}` : `Marcar ${d.chore.name} como hecha`}>
                   {d.completion && <Icon name="check" size={22} strokeWidth={3} />}
                 </button>
                 <div class="grow stack-sm" style="padding-top:2px">
                   <span class={`tarea${d.completion ? ' strike' : ''}`}>{d.chore.name}</span>
-                  <span class="meta">{d.completion ? `Hecha a las ${hhmm(d.completion.done_at)}` : (d.chore.description || ruleMeta(d.chore, h.today))}</span>
+                  <span class="meta">{saving ? 'Guardando…' : d.completion ? `Hecha a las ${hhmm(d.completion.done_at)}` : (d.chore.description || ruleMeta(d.chore, h.today))}</span>
                   {d.team.some((id) => id !== h.me.id) && <span class="meta">Con {listJoin([...new Set(d.team.filter((id) => id !== h.me.id))].map(name))}</span>}
                   {chip && !d.completion && <span class="chip chip-aviso" style="margin-top:4px">{chip}</span>}
                   {sent && <span class="chip chip-neutro" style="margin-top:4px">Pedido enviado{sent.target ? ` a ${name(sent.target)}` : ' a todos'}</span>}
@@ -90,7 +96,7 @@ export function Today({ h }) {
                 <div class="btn-row">
                   <button class="btn btn-primario" type="button" onClick={() => toggle(d)}>Hecho</button>
                   {sent
-                    ? <button class="btn btn-secundario" type="button" onClick={() => attempt(() => actions.cancelRequest(sent.id), 'Pedido cancelado')}>Cancelar pedido</button>
+                    ? <button class="btn btn-secundario" type="button" disabled={busy === sent.id} onClick={() => save(sent.id, () => actions.cancelRequest(sent.id), 'Pedido cancelado')}><BusyLabel on={busy === sent.id}>Cancelar pedido</BusyLabel></button>
                     : <button class="btn btn-secundario" type="button" onClick={() => setCoverFor(d)}>No puedo</button>}
                 </div>
               )}
@@ -119,21 +125,22 @@ export function Today({ h }) {
               const who = h.byId.get(d.assignee);
               const noAccount = who && !who.user_id;
               const chip = chipFor(d);
+              const saving = h.busy(doneKey(d));
               return (
                 <div class="list-row">
                   <Avatar member={who} size={36} />
                   <div class="grow stack-sm">
                     <span class="tarea" style="font-size:15px">{d.chore.name}</span>
                     <span class="meta">
-                      {name(d.assignee)}{d.team.length > 0 ? ' (en equipo)' : ''} · {d.completion ? `hecha${d.completion.done_by !== d.assignee ? ` por ${name(d.completion.done_by)}` : ''} a las ${hhmm(d.completion.done_at)}` : 'pendiente'}
+                      {name(d.assignee)}{d.team.length > 0 ? ' (en equipo)' : ''} · {saving ? 'guardando…' : d.completion ? `hecha${d.completion.done_by !== d.assignee ? ` por ${name(d.completion.done_by)}` : ''} a las ${hhmm(d.completion.done_at)}` : 'pendiente'}
                     </span>
                     {chip && <span class="chip chip-aviso">{chip}</span>}
                   </div>
                   {d.completion
-                    ? <span style="color:var(--cascara)"><Icon name="check" size={24} label="Hecha" /></span>
+                    ? <span class={saving ? 'guardando' : undefined} style="color:var(--cascara)"><Icon name="check" size={24} label="Hecha" /></span>
                     : noAccount && h.isAdmin
                       ? <button class="btn btn-secundario" style="padding:0 12px" type="button" onClick={() => attempt(() => actions.markDone(h, d))}>Marcar</button>
-                      : <button class="btn btn-secundario" style="padding:0 12px" type="button" onClick={() => setConfirm({ duty: d, returnDate: returnFor(h, d.chore, h.today, h.me.id) })}>Yo la hice</button>}
+                      : <button class="btn btn-secundario" style="padding:0 12px" type="button" disabled={saving} onClick={() => setConfirm({ duty: d, returnDate: returnFor(h, d.chore, h.today, h.me.id) })}>Yo la hice</button>}
                 </div>
               );
             })}
@@ -146,7 +153,7 @@ export function Today({ h }) {
       {coverFor && <CoverSheet h={h} duty={coverFor} onClose={() => setCoverFor(null)} />}
 
       {confirm && (
-        <Sheet label="Confirmar" onClose={() => setConfirm(null)}>
+        <Sheet label="Confirmar" onClose={() => busy !== 'confirm' && setConfirm(null)}>
           <div class="stack-sm">
             <h2 class="titulo">{confirm.duty.chore.name}</h2>
             <p class="muted">
@@ -155,12 +162,12 @@ export function Today({ h }) {
             </p>
           </div>
           <div class="hoja-acciones">
-          <button class="btn btn-primario" type="button" onClick={async () => {
+          <button class="btn btn-primario" type="button" disabled={busy === 'confirm'} onClick={async () => {
             const d = confirm.duty;
+            await save('confirm', () => actions.coverTask({ choreId: d.chore.id, date: h.today, slot: d.slot, covered: d.assignee, returnDate: confirm.returnDate, markDone: true }), 'Listo, quedó registrado');
             setConfirm(null);
-            await attempt(() => actions.coverTask({ choreId: d.chore.id, date: h.today, slot: d.slot, covered: d.assignee, returnDate: confirm.returnDate, markDone: true }), 'Listo, quedó registrado');
-          }}>Sí, la hice yo</button>
-          <button class="btn btn-texto" type="button" onClick={() => setConfirm(null)}>Cancelar</button>
+          }}><BusyLabel on={busy === 'confirm'}>Sí, la hice yo</BusyLabel></button>
+          <button class="btn btn-texto" type="button" disabled={busy === 'confirm'} onClick={() => setConfirm(null)}>Cancelar</button>
           </div>
         </Sheet>
       )}
@@ -174,10 +181,12 @@ function CoverSheet({ h, duty, onClose }) {
     .map((id) => ({ id, m: h.byId.get(id), next: returnFor(h, duty.chore, h.today, id) }));
   const [picked, setPicked] = useState(people[0]?.id || null);
   const sel = people.find((p) => p.id === picked);
-  const send = (target) => attempt(() => actions.requestCover(duty.chore.id, h.today, target), target ? `Pedido enviado a ${h.byId.get(target)?.name}` : 'Pedido enviado a todos').then(onClose);
+  const [busy, run] = useBusy();
+  const send = (target) => run(target || 'todos', async () => { await actions.requestCover(duty.chore.id, h.today, target); await h.reload(); },
+    target ? `Pedido enviado a ${h.byId.get(target)?.name}` : 'Pedido enviado a todos').then(onClose);
 
   return (
-    <Sheet label="Pedir que te cubran" onClose={onClose}>
+    <Sheet label="Pedir que te cubran" onClose={() => !busy && onClose()}>
       <div class="stack-sm">
         <span class="eyebrow" style="color:var(--aviso)">No puedo hoy</span>
         <h2 class="titulo">{duty.chore.name}</h2>
@@ -203,9 +212,9 @@ function CoverSheet({ h, duty, onClose }) {
         </div>
       )}
       <div class="stack hoja-acciones" style="gap:8px">
-        {sel && <button class="btn btn-primario" type="button" onClick={() => send(sel.id)}>Enviar pedido a {sel.m.name}</button>}
-        {people.length > 1 && <button class="btn btn-secundario" type="button" onClick={() => send(null)}>Pedir a cualquiera</button>}
-        <button class="btn btn-texto" type="button" onClick={onClose}>Cancelar</button>
+        {sel && <button class="btn btn-primario" type="button" disabled={Boolean(busy)} onClick={() => send(sel.id)}><BusyLabel on={busy === sel.id}>Enviar pedido a {sel.m.name}</BusyLabel></button>}
+        {people.length > 1 && <button class="btn btn-secundario" type="button" disabled={Boolean(busy)} onClick={() => send(null)}><BusyLabel on={busy === 'todos'}>Pedir a cualquiera</BusyLabel></button>}
+        <button class="btn btn-texto" type="button" disabled={Boolean(busy)} onClick={onClose}>Cancelar</button>
       </div>
     </Sheet>
   );
