@@ -32,12 +32,9 @@ export function Today({ h }) {
 
   return (
     <main class="screen with-nav ancha hoy">
-      <header class="row">
-        <div class="grow stack-sm">
-          <span class="eyebrow">{longDate(h.today)}</span>
-          <h1 class="display">Hola, {h.me.name}</h1>
-        </div>
-        <a class="solo-celular" href="#/perfil" aria-label="Perfil"><Avatar member={h.me} size={44} /></a>
+      <header class="stack-sm">
+        <span class="eyebrow">{longDate(h.today)}</span>
+        <h1 class="display">Hola, {h.me.name}</h1>
       </header>
 
       {/* En el celular las dos columnas se deshacen (display: contents) y el orden lo da `order`. */}

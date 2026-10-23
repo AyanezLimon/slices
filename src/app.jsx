@@ -11,6 +11,8 @@ import { Profile, AvatarPicker } from './screens/Profile.jsx';
 import { Guide } from './screens/Guide.jsx';
 import { AdminChores, ChoreEditor } from './screens/AdminChores.jsx';
 import { AdminMembers } from './screens/AdminMembers.jsx';
+import { Shopping } from './screens/Shopping.jsx';
+import { useShopping } from './lib/shopping.js';
 
 const INVITE_KEY = 'slices-invite';
 
@@ -49,18 +51,25 @@ function UpdateBanner() {
 }
 
 // En el celular es la barra de abajo; en una pantalla ancha, la barra lateral (ver styles.css).
-function Nav({ route, isAdmin, me, hidden }) {
+// Perfil: en el celular es la pestaña con tu avatar; en la barra lateral, tu nombre al pie.
+function Nav({ route, isAdmin, me, hidden, shopCount }) {
   const tab = route[0];
-  const items = [['hoy', 'Hoy', 'sol'], ...(isAdmin ? [['admin', 'Admin', 'ajustes']] : []), ['perfil', 'Perfil', 'persona']];
+  const items = [['hoy', 'Hoy', 'sol'], ['compras', 'Compras', 'carrito'], ...(isAdmin ? [['admin', 'Admin', 'ajustes']] : [])];
   return (
     <nav class={`nav${hidden ? ' nav-solo-ancha' : ''}`} aria-label="Secciones">
       <div class="nav-marca" aria-hidden="true"><AppMark size={40} /><span>Slices</span></div>
       {items.map(([id, label, icon]) => (
-        <a href={`#/${id}`} aria-current={tab === id ? 'page' : undefined}><Icon name={icon} />{label}</a>
+        <a href={`#/${id}`} aria-current={tab === id ? 'page' : undefined}>
+          <span class="nav-icono"><Icon name={icon} />{id === 'compras' && shopCount > 0 && <span class="nav-cuenta" aria-hidden="true">{shopCount}</span>}</span>
+          {label}
+          {id === 'compras' && shopCount > 0 && <span class="sr-only">, {shopCount} por comprar</span>}
+        </a>
       ))}
-      <a class="nav-yo" href="#/perfil" aria-label={`Perfil de ${me.name}`}>
-        <Avatar member={me} size={40} />
-        <span class="stack-sm"><span class="tarea" style="font-size:15px">{me.name}</span></span>
+      <a class="nav-yo" href="#/perfil" aria-current={tab === 'perfil' ? 'page' : undefined} aria-label={`Perfil de ${me.name}`}>
+        <span class="nav-icono"><Avatar member={me} size={26} /></span>
+        <span class="nav-yo-ancha"><Avatar member={me} size={40} /></span>
+        <span class="nav-yo-nombre">Perfil</span>
+        <span class="nav-yo-ancha tarea" style="font-size:15px">{me.name}</span>
       </a>
     </nav>
   );
@@ -70,6 +79,7 @@ export function App() {
   const route = useRoute();
   const session = useSession();
   const h = useHouse(session);
+  const shop = useShopping(h.me?.id);
 
   // Guarda el código de invitación antes del login
   useEffect(() => {
@@ -104,6 +114,8 @@ export function App() {
     else screen = <AdminChores h={h} />;
   } else if (tab === 'perfil') {
     screen = sub === 'foto' ? <AvatarPicker h={h} /> : <Profile h={h} />;
+  } else if (tab === 'compras') {
+    screen = <Shopping h={h} shop={shop} />;
   } else if (tab === 'guia') {
     screen = <Guide h={h} />;
   } else {
@@ -114,7 +126,8 @@ export function App() {
     <div class="app">
       <UpdateBanner />
       {screen}
-      <Nav route={route} isAdmin={h.isAdmin} me={h.me} hidden={!showNav} />
+      <Nav route={route} isAdmin={h.isAdmin} me={h.me} hidden={!showNav}
+        shopCount={(shop.items || []).filter((x) => !x.owner && !x.bought_at).length} />
       <Toaster />
     </div>
   );

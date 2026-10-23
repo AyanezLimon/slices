@@ -150,7 +150,19 @@ textarea.input { padding: 12px 14px; resize: none; }
 .week div { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--tinta-suave); }
 .week span { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
 
-.nav-marca, .nav-yo, .nav.nav-solo-ancha { display: none; }
+.nav-marca, .nav-yo-ancha, .nav.nav-solo-ancha { display: none; }
+.nav-icono { position: relative; display: flex; }
+.nav-cuenta { position: absolute; top: -6px; right: -12px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--pulpa); color: #0F3D2E; font-size: 11px; line-height: 18px; font-weight: 800; text-align: center; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Compras en el celular: una columna; el orden lo da `order` (como en Hoy). */
+.compras-principal, .compras-lado { display: contents; }
+.compras-agregar { order: 1; }
+.compras-siempre { order: 2; gap: 8px; margin-top: -8px; }
+.compras-pendientes { order: 3; }
+.compras-hechas { order: 4; }
+.compra-texto { background: none; border: none; padding: 4px 0; text-align: left; color: inherit; align-self: stretch; justify-content: center; }
+.chip-btn { min-height: 40px; padding: 0 14px 0 10px; border-radius: 999px; border: 1.5px solid var(--linea); background: var(--superficie); font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
 .hoja-acciones { display: flex; flex-direction: column; gap: 8px; }
 
 /* Hoy en el celular: una sola columna; las dos columnas de escritorio se deshacen. */
@@ -175,7 +187,13 @@ textarea.input { padding: 12px 14px; resize: none; }
   .nav a:hover { background: var(--superficie-tenue); }
   .nav a[aria-current="page"] { background: var(--superficie-tenue); }
   .nav a.nav-yo { display: flex; margin-top: auto; min-height: 64px; padding: 12px 8px 0; border-top: 1px solid var(--linea); border-radius: 0; color: var(--tinta); }
-  .nav a.nav-yo:hover { background: none; }
+  .nav a { position: relative; }
+  .nav .nav-icono { position: static; }
+  .nav .nav-cuenta { top: 13px; right: 12px; }
+  .nav a.nav-yo:hover, .nav a.nav-yo[aria-current="page"] { background: none; }
+  .nav a.nav-yo .nav-icono, .nav-yo-nombre { display: none; }
+  .nav a.nav-yo .nav-yo-ancha { display: inline-flex; }
+  .nav a.nav-yo[aria-current="page"] .tarea { color: var(--primario); }
 
   .screen, .screen.with-nav { max-width: 768px; padding: 40px 48px 48px; gap: 28px; }
   .screen.ancha { max-width: 1216px; }
@@ -192,6 +210,14 @@ textarea.input { padding: 12px 14px; resize: none; }
   .tarjeta-fila { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px 20px; }
   .tarjeta-fila > .row { flex: 1 1 260px; }
   .tarjeta-fila > .btn-row > .btn { flex: none; padding: 0 22px; }
+
+  .compras { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); gap: 28px 32px; align-content: start; }
+  .compras > header, .compras > .compras-listas { grid-column: 1 / -1; }
+  .compras-listas { max-width: 480px; }
+  .compras-principal, .compras-lado { display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+  .compras-principal { gap: 20px; }
+  .compras-siempre > h2 { font-size: 17px; line-height: 22px; font-weight: 800; color: var(--tinta); }
+  .compras-siempre { margin-top: 0; gap: 12px; background: var(--superficie); border-radius: var(--r-lg); box-shadow: var(--sombra-tarjeta); padding: 20px; }
 
   .lista-tareas { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px !important; }
 

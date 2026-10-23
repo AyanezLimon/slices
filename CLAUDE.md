@@ -3,7 +3,7 @@
 PWA familiar para repartir quehaceres (familia Limón: Santiago, Isis, Victoria, Aries, y una persona de fin de semana que quizás no use la app). La UI está en español y le habla de tú a la persona. El costo es cero. El dueño prefiere soluciones directas, sin sobre-ingeniería.
 
 ## Stack
-- **Frontend.** Vite + Preact en `src/`, con router por hash (`#/hoy`, `#/admin`, `#/admin/tarea/:id`, `#/admin/miembros`, `#/perfil`, `#/perfil/foto`, `#/guia`, `#/unirse/:code`). Se publica en GitHub Pages con base `/slices/`.
+- **Frontend.** Vite + Preact en `src/`, con router por hash (`#/hoy`, `#/compras`, `#/admin`, `#/admin/tarea/:id`, `#/admin/miembros`, `#/perfil`, `#/perfil/foto`, `#/guia`, `#/unirse/:code`). Se publica en GitHub Pages con base `/slices/`.
 - **Backend.** Supabase:
   - Postgres con RLS.
   - Auth con Google (PKCE).
@@ -31,6 +31,7 @@ PWA familiar para repartir quehaceres (familia Limón: Santiago, Isis, Victoria,
   - Navegación network-first.
   - Cada push siempre muestra una notificación; en iOS es obligatorio.
   - Acuse de recibo vía `rpc/push_ack`.
+- **Compras (`src/lib/shopping.js`, `src/screens/Shopping.jsx`).** Tabla `shopping_items`: `owner` null es la lista de la casa; `owner` = id de un miembro es su lista personal y RLS solo se la deja ver a esa persona. Comprar llena `bought_at`; lo comprado sale de la lista al día siguiente pero se queda 90 días para "Lo de siempre" (sugerencias por frecuencia). Los cambios son optimistas (el id lo genera la PWA). El número de la pestaña cuenta solo la lista de la casa.
 - **Pantalla ancha.** Desde 1024 px la barra de abajo pasa a barra lateral, Hoy va en dos columnas, Administrar en cuadrícula y las hojas inferiores son diálogos centrados. Todo está en el bloque `@media (min-width: 1024px)` de `src/styles.css`; en el celular las columnas de Hoy usan `display: contents` y `order`.
 - **`src/lib/updates.js`.** Compara `version.json` con `__APP_VERSION__`.
   - Si la persona no ha tocado nada, recarga en silencio.
