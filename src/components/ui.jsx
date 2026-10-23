@@ -18,6 +18,8 @@ const PATHS = {
   compartir: 'M12 3v12M8 7l4-4 4 4M5 13v6h14v-6',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.01',
   galeria: 'M3 5h18v14H3zM9 11a2 2 0 1 0 0-.01M21 16l-5-5-8 8',
+  carrito: 'M3 4h2.5l2.2 10.5a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.1L21 8H6.3M9.5 18.7a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6zM17.5 18.7a1.3 1.3 0 1 0 0 2.6 1.3 1.3 0 0 0 0-2.6z',
+  candado: 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V8a4 4 0 0 1 8 0v3',
   camara: 'M4 8h3l2-3h6l2 3h3v11H4zM12 9.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z'
 };
 export function Icon({ name, size = 24, strokeWidth = 2, label }) {
