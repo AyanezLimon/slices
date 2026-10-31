@@ -4,6 +4,7 @@ import {
   todayIn, addDays, indexOverrides, indexBySlot, lookupSlot, dutiesOn, findReturnDate, ruleFor, weekdayOf,
   slotOf, peopleIn, key as slotKey
 } from '../../supabase/functions/_shared/schedule.js';
+import { weekdayName, listJoin } from '../../supabase/functions/_shared/format.js';
 
 export const DEFAULT_COVER = { meCubren: true, mePiden: true, devolver: true, general: false, actualizaciones: true };
 export const ckey = (choreId, date) => `${choreId}|${date}`;
@@ -143,6 +144,30 @@ export function ruleMeta(chore, date) {
   }
   if (r.mode === 'every_n') return `Cada ${r.n} días`;
   return 'Rotativa diaria';
+}
+
+/** Cuándo toca una tarea, sin hablarle a nadie: "Lunes, miércoles y viernes", "Cada 2 días". */
+export function ruleSummary(chore, date) {
+  const r = ruleFor(chore, date) || chore.rules?.[chore.rules.length - 1];
+  if (!r) return '';
+  if (r.mode === 'every_n') return r.n > 1 ? `Cada ${r.n} días` : 'Todos los días';
+  const all = [1, 2, 3, 4, 5, 6, 7];
+  const days = r.mode === 'weekly'
+    ? all.filter((d) => { const s = slotOf(r, d); return s.rotate || s.people.length > 0; })
+    : (r.days?.length ? r.days : all);
+  const when = days.length === 7 ? 'todos los días' : listJoin(days.map(weekdayName));
+  const rotates = r.mode === 'daily_rotation' ? 'rota cada día' : r.mode === 'weekly' && days.some((d) => slotOf(r, d).rotate) ? 'rota cada semana' : '';
+  const text = rotates ? `${when}, ${rotates}` : when;
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** Coberturas y completadas de un rango de fechas que `useHouse` no cargó (semanas pasadas). */
+export async function loadRange(from, to) {
+  const [overrides, completions] = await Promise.all([
+    supabase.from('overrides').select('*').gte('date', from).lte('date', to),
+    supabase.from('completions').select('*').gte('date', from).lte('date', to)
+  ]);
+  return { ov: indexOverrides(must(overrides)), done: indexBySlot(must(completions)) };
 }
 
 /** Puesto que ocupa `memberId` en una ocurrencia (para cubrirle). */

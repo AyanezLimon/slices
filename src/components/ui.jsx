@@ -8,6 +8,8 @@ const PATHS = {
   persona: 'M12 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8zM4 21c0-4 4-6 8-6s8 2 8 6',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   atras: 'M15 5l-7 7 7 7',
+  adelante: 'M9 5l7 7-7 7',
+  calendario: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
   mas: 'M12 5v14M5 12h14',
   campana: 'M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0',
   telefono: 'M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zM11 18h2',

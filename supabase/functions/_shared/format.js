@@ -8,6 +8,11 @@ export function dayName(iso) {
   return DIAS[weekdayOf(iso)];
 }
 
+/** 1 = "lunes" ... 7 = "domingo" */
+export function weekdayName(n) {
+  return DIAS[n];
+}
+
 /** "hoy", "mañana", "el martes 27", "el 3 de noviembre" (más de 2 semanas). */
 export function relDate(iso, today) {
   const diff = toDayNum(iso) - toDayNum(today);

@@ -165,6 +165,40 @@ textarea.input { padding: 12px 14px; resize: none; }
 .chip-btn { min-height: 40px; padding: 0 14px 0 10px; border-radius: 999px; border: 1.5px solid var(--linea); background: var(--superficie); font-size: 14px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
 .hoja-acciones { display: flex; flex-direction: column; gap: 8px; }
 
+/* Semana en el celular: lista por día con filtro por persona; la tabla es solo para pantalla ancha. */
+.solo-ancha, .semana-personas, .semana-tabla, .semana-leyenda { display: none; }
+.semana-cabeza { display: flex; align-items: flex-end; gap: 12px; }
+.btn-icono { width: 44px; padding: 0; flex: none; }
+.semana-volver { align-self: flex-start; min-height: 40px; margin-top: -12px; padding: 0 14px; background: var(--superficie-tenue); color: var(--primario); font-size: 14px; }
+.semana-chips { display: flex; gap: 8px; overflow-x: auto; margin: 0 -20px; padding: 2px 20px 4px; scrollbar-width: none; }
+.chip-persona { flex: none; min-height: 44px; display: inline-flex; align-items: center; gap: 8px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--linea); background: var(--superficie); font-size: 14px; font-weight: 700; white-space: nowrap; }
+.chip-persona.con-avatar { padding-left: 5px; padding-right: 14px; }
+.chip-persona .avatar { box-shadow: 0 0 0 2px var(--superficie); }
+.chip-persona[aria-pressed="true"] { background: var(--primario); border-color: var(--primario); color: var(--sobre-primario); }
+.semana-resumen { background: var(--superficie); border-radius: var(--r-lg); box-shadow: var(--sombra-tarjeta); padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
+.semana-icono { color: var(--cascara); display: flex; }
+.semana-pasados { min-height: 48px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-radius: var(--r-lg); border: 1.5px dashed var(--linea); background: transparent; color: var(--tinta-suave); font-size: 14px; font-weight: 700; text-align: left; }
+.semana-dia-cabeza { display: flex; align-items: baseline; gap: 8px; padding: 0 4px; }
+.semana-dia .card { border: 2px solid transparent; padding: 0 14px; }
+.semana-dia.es-hoy .card { border-color: var(--cascara); }
+.semana-dia.es-hoy h2 { color: var(--primario); }
+.chip-pendiente { background: var(--pendiente); color: var(--tinta); }
+
+/* Pastilla de persona en la tabla: su color si falta, contorno si está hecha, naranja punteado si quedó sin hacer. */
+.pastilla { display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 2px 8px 2px 2px; border-radius: 999px; border: 1.5px solid var(--c); background: var(--c); color: var(--sobre-persona); font-size: 13px; line-height: 16px; font-weight: 700; }
+.pastilla .avatar { box-shadow: 0 0 0 1.5px var(--superficie); }
+.pastilla.hecha { background: var(--superficie-tenue); color: var(--tinta); }
+.pastilla.sin { background: var(--aviso-fondo); color: var(--aviso); border: 1.5px dashed var(--aviso); }
+.pastilla.atenuada { opacity: 0.22; }
+.pastilla-nombre { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pastilla.muestra { display: inline-block; width: 28px; min-height: 18px; height: 18px; padding: 0; }
+.nota-aviso { color: var(--aviso); font-weight: 600; }
+.persona-tarjeta { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: var(--r-lg); border: 2px solid transparent; background: var(--superficie); box-shadow: var(--sombra-tarjeta); text-align: left; }
+.persona-tarjeta[aria-pressed="true"] { border-color: var(--c); }
+.persona-tarjeta.atenuada { opacity: 0.6; }
+.barra { height: 6px; border-radius: 999px; background: var(--pendiente); display: flex; overflow: hidden; }
+.barra span { background: var(--c); border-radius: 999px; }
+
 /* Hoy en el celular: una sola columna; las dos columnas de escritorio se deshacen. */
 .hoy-principal, .hoy-lado { display: contents; }
 .hoy-principal > * { order: 2; }
@@ -218,6 +252,29 @@ textarea.input { padding: 12px 14px; resize: none; }
   .compras-principal { gap: 20px; }
   .compras-siempre > h2 { font-size: 17px; line-height: 22px; font-weight: 800; color: var(--tinta); }
   .compras-siempre { margin-top: 0; gap: 12px; background: var(--superficie); border-radius: var(--r-lg); box-shadow: var(--sombra-tarjeta); padding: 20px; }
+
+
+  .solo-ancha { display: revert; }
+  .btn.solo-ancha { display: inline-flex; }
+  .semana { gap: 24px; }
+  .semana-chips, .semana-lista { display: none; }
+  .semana-volver { margin-top: 0; align-self: center; }
+  .semana-personas { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .semana-resumen { background: none; box-shadow: none; padding: 0; min-height: 40px; color: var(--tinta-suave); }
+  .semana-tabla { display: block; padding: 0; overflow-x: auto; }
+  .semana-tabla table { width: 100%; min-width: 940px; border-collapse: collapse; table-layout: fixed; }
+  .semana-tabla th, .semana-tabla td { border-bottom: 1px solid var(--linea); text-align: left; vertical-align: top; }
+  .semana-tabla tbody tr:last-child > * { border-bottom: none; }
+  .semana-tabla thead th { padding: 10px 8px; vertical-align: bottom; }
+  .semana-tabla thead th:first-child { padding: 14px 16px; }
+  .semana-tabla thead th > * { display: block; }
+  .semana-tabla tbody th { padding: 12px 16px; }
+  .semana-tabla td { padding: 8px 6px; }
+  .semana-tabla .es-hoy { background: var(--superficie-tenue); }
+  .semana-tabla thead .es-hoy .eyebrow { color: var(--primario); }
+  .semana-num { font-size: 18px; line-height: 22px; font-weight: 800; color: var(--tinta); }
+  .semana-leyenda { display: flex; flex-wrap: wrap; gap: 20px; }
+  .semana-leyenda > span { display: flex; align-items: center; gap: 8px; }
 
   .lista-tareas { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px !important; }
 
