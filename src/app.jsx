@@ -12,6 +12,7 @@ import { Guide } from './screens/Guide.jsx';
 import { AdminChores, ChoreEditor } from './screens/AdminChores.jsx';
 import { AdminMembers } from './screens/AdminMembers.jsx';
 import { Shopping } from './screens/Shopping.jsx';
+import { Week } from './screens/Week.jsx';
 import { useShopping } from './lib/shopping.js';
 
 const INVITE_KEY = 'slices-invite';
@@ -54,7 +55,7 @@ function UpdateBanner() {
 // Perfil: en el celular es la pestaña con tu avatar; en la barra lateral, tu nombre al pie.
 function Nav({ route, isAdmin, me, hidden, shopCount }) {
   const tab = route[0];
-  const items = [['hoy', 'Hoy', 'sol'], ['compras', 'Compras', 'carrito'], ...(isAdmin ? [['admin', 'Admin', 'ajustes']] : [])];
+  const items = [['hoy', 'Hoy', 'sol'], ['semana', 'Semana', 'calendario'], ['compras', 'Compras', 'carrito'], ...(isAdmin ? [['admin', 'Admin', 'ajustes']] : [])];
   return (
     <nav class={`nav${hidden ? ' nav-solo-ancha' : ''}`} aria-label="Secciones">
       <div class="nav-marca" aria-hidden="true"><AppMark size={40} /><span>Slices</span></div>
@@ -114,6 +115,8 @@ export function App() {
     else screen = <AdminChores h={h} />;
   } else if (tab === 'perfil') {
     screen = sub === 'foto' ? <AvatarPicker h={h} /> : <Profile h={h} />;
+  } else if (tab === 'semana') {
+    screen = <Week h={h} />;
   } else if (tab === 'compras') {
     screen = <Shopping h={h} shop={shop} />;
   } else if (tab === 'guia') {
